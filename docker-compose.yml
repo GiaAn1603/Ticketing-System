@@ -1,0 +1,130 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ticket-postgres
+    restart: always
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - ticket-network
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: ticket-pgadmin
+    restart: always
+    ports:
+      - "${PGADMIN_PORT}:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - ticket-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: ticket-redis
+    restart: always
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - ticket-network
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: ticket-redis-ui
+    restart: always
+    ports:
+      - "${REDIS_UI_PORT}:8081"
+    environment:
+      REDIS_HOSTS: "local:redis:6379"
+    depends_on:
+      - redis
+    networks:
+      - ticket-network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: ticket-zookeeper
+    restart: always
+    ports:
+      - "${ZOOKEEPER_PORT}:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-log:/var/lib/zookeeper/log
+      - zookeeper-secrets:/etc/zookeeper/secrets
+    networks:
+      - ticket-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: ticket-kafka
+    restart: always
+    ports:
+      - "${KAFKA_PORT}:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:${KAFKA_INTERNAL_PORT},PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:${KAFKA_INTERNAL_PORT},PLAINTEXT_HOST://localhost:${KAFKA_PORT}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+      - kafka-secrets:/etc/kafka/secrets
+    depends_on:
+      - zookeeper
+    networks:
+      - ticket-network
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: ticket-kafka-ui
+    restart: always
+    ports:
+      - "${KAFKA_UI_PORT}:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:${KAFKA_INTERNAL_PORT}
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181 
+    networks:
+      - ticket-network
+
+volumes:
+  postgres-data:
+    name: ticket-postgres-data
+  pgadmin-data:
+    name: ticket-pgadmin-data
+  redis-data:
+    name: ticket-redis-data
+  zookeeper-data:
+    name: ticket-zookeeper-data
+  zookeeper-log:
+    name: ticket-zookeeper-log
+  zookeeper-secrets:
+    name: ticket-zookeeper-secrets
+  kafka-data:
+    name: ticket-kafka-data
+  kafka-secrets:
+    name: ticket-kafka-secrets
+
+networks:
+  ticket-network:
+    name: ticket-network
+    driver: bridge
