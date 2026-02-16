@@ -1,0 +1,54 @@
+package main
+
+import (
+	"context"
+	"log"
+	"net/http"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"Ticketing-System/internal/config"
+	"Ticketing-System/internal/handlers"
+	"Ticketing-System/internal/infrastructure"
+	"Ticketing-System/internal/repositories"
+	"Ticketing-System/internal/services"
+)
+
+func main() {
+	cfg := config.LoadConfig()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	rdb, err := infrastructure.ConnectRedis(ctx, cfg.RedisAddr)
+	if err != nil {
+		log.Fatalf("[MAIN][FATAL] Failed to connect Redis | err=%v", err)
+	}
+	defer rdb.Close()
+
+	redisRepo, err := repositories.NewRedisRepo(ctx, rdb)
+	if err != nil {
+		log.Fatalf("[MAIN][FATAL] Failed to init RedisRepo | err=%v", err)
+	}
+
+	ticketService := services.NewTicketService(redisRepo)
+	ticketHandler := handlers.NewTicketHandler(ticketService)
+	_ = ticketHandler
+
+	gin.SetMode(gin.ReleaseMode)
+	r := gin.Default()
+	r.SetTrustedProxies(nil)
+
+	r.GET("/ping", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "pong",
+			"status":  "success",
+		})
+	})
+
+	log.Printf("[MAIN][INFO] Server started | url=http://localhost%s", cfg.ServerPort)
+	if err := r.Run(cfg.ServerPort); err != nil {
+		log.Fatalf("[MAIN][FATAL] Failed to start server | err=%v", err)
+	}
+}
