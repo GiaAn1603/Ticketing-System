@@ -7,7 +7,17 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
+	"Ticketing-System/pkg/apperrors"
 	"Ticketing-System/scripts"
+)
+
+const (
+	luaSuccess               = 1
+	luaAlreadyProcessed      = 2
+	luaInvalidInput          = -1000
+	luaEventNotFound         = -2001
+	luaOutOfStock            = -2002
+	luaPurchaseLimitExceeded = -2003
 )
 
 type RedisRepo struct {
@@ -47,4 +57,39 @@ func (r *RedisRepo) InitializeEvent(ctx context.Context, eventID string, stock i
 	log.Printf("[REPO][INFO] Event initialized successfully | event_id=%s | stock=%d", eventID, stock)
 
 	return nil
+}
+
+func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID string, qty, limit int) error {
+	keys := []string{
+		fmt.Sprintf("ticket:stock:%s", eventID),
+		fmt.Sprintf("ticket:history:%s:%s", eventID, userID),
+		fmt.Sprintf("req_processed:%s", reqID),
+	}
+
+	args := []interface{}{qty, limit, 86400}
+
+	res, err := r.rdb.EvalSha(ctx, r.scriptSHA, keys, args...).Int()
+	if err != nil {
+		log.Printf("[REPO][ERROR] Lua script execution failed | req_id=%s | err=%v", reqID, err)
+		return err
+	}
+
+	log.Printf("[REPO][INFO] Lua script result | req_id=%s | res=%d", reqID, res)
+
+	switch res {
+	case luaSuccess:
+		return nil
+	case luaAlreadyProcessed:
+		return apperrors.ErrAlreadyProcessed
+	case luaInvalidInput:
+		return apperrors.ErrInvalidInput
+	case luaEventNotFound:
+		return apperrors.ErrEventNotFound
+	case luaOutOfStock:
+		return apperrors.ErrOutOfStock
+	case luaPurchaseLimitExceeded:
+		return apperrors.ErrPurchaseLimitExceeded
+	default:
+		return apperrors.ErrInternal
+	}
 }
