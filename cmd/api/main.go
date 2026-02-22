@@ -32,7 +32,6 @@ func main() {
 
 	ticketService := services.NewTicketService(redisRepo)
 	ticketHandler := handlers.NewTicketHandler(ticketService)
-	_ = ticketHandler
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
@@ -44,6 +43,8 @@ func main() {
 			"status":  "success",
 		})
 	})
+
+	r.POST("/init-ticket", ticketHandler.InitTicket)
 
 	log.Printf("[MAIN][INFO] Server started | url=http://localhost%s", cfg.ServerPort)
 	if err := r.Run(cfg.ServerPort); err != nil {
