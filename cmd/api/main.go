@@ -45,6 +45,7 @@ func main() {
 	})
 
 	r.POST("/init-ticket", ticketHandler.InitTicket)
+	r.POST("/buy-ticket", ticketHandler.BuyTicket)
 
 	log.Printf("[MAIN][INFO] Server started | url=http://localhost%s", cfg.ServerPort)
 	if err := r.Run(cfg.ServerPort); err != nil {
