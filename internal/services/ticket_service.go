@@ -22,6 +22,6 @@ func (s *TicketService) InitializeEvent(ctx context.Context, eventID string, sto
 }
 
 func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, reqID string, qty, limit int) error {
-	log.Printf("[SERVICE][INFO] Processing purchase | req_id=%s | event_id=%s | user_id=%s", reqID, eventID, userID)
+	log.Printf("[SERVICE][INFO] Processing purchase | event_id=%s | user_id=%s | req_id=%s | qty=%d | limit=%d", eventID, userID, reqID, qty, limit)
 	return s.redisRepo.PurchaseTicket(ctx, eventID, userID, reqID, qty, limit)
 }
