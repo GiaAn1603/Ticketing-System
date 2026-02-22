@@ -34,7 +34,7 @@ func (h *TicketHandler) InitTicket(c *gin.Context) {
 	}
 
 	if err := h.service.InitializeEvent(c.Request.Context(), req.EventID, req.Stock); err != nil {
-		log.Printf("[HANDLER][ERROR] Init event failed | event_id=%s | err=%v", req.EventID, err)
+		log.Printf("[HANDLER][ERROR] Init event failed | event_id=%s | stock=%d | err=%v", req.EventID, req.Stock, err)
 
 		if strings.Contains(err.Error(), "failed to set stock in redis") {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -59,7 +59,7 @@ func (h *TicketHandler) InitTicket(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[HANDLER][INFO] Init event successful | event_id=%s", req.EventID)
+	log.Printf("[HANDLER][INFO] Init event successful | event_id=%s | stock=%d", req.EventID, req.Stock)
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":   "success",
@@ -82,7 +82,7 @@ func (h *TicketHandler) BuyTicket(c *gin.Context) {
 
 	reqID := c.GetHeader("X-Request-ID")
 	if reqID == "" {
-		log.Printf("[HANDLER][WARN] Missing X-Request-ID | event_id=%s | user_id=%s", req.EventID, req.UserID)
+		log.Printf("[HANDLER][WARN] Missing X-Request-ID | event_id=%s | user_id=%s | qty=%d | limit=%d", req.EventID, req.UserID, req.Quantity, req.MaxLimit)
 
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status": "fail",
@@ -92,7 +92,7 @@ func (h *TicketHandler) BuyTicket(c *gin.Context) {
 	}
 
 	if err := h.service.ProcessPurchase(c.Request.Context(), req.EventID, req.UserID, reqID, req.Quantity, req.MaxLimit); err != nil {
-		log.Printf("[HANDLER][WARN] Purchase failed | req_id=%s | err=%v", reqID, err)
+		log.Printf("[HANDLER][WARN] Purchase failed | event_id=%s | user_id=%s | req_id=%s | qty=%d | limit=%d | err=%v", req.EventID, req.UserID, reqID, req.Quantity, req.MaxLimit, err)
 
 		switch err {
 		case models.ErrAlreadyProcessed:
@@ -135,7 +135,7 @@ func (h *TicketHandler) BuyTicket(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[HANDLER][INFO] Purchase successful | req_id=%s | user_id=%s | qty=%d", reqID, req.UserID, req.Quantity)
+	log.Printf("[HANDLER][INFO] Purchase successful | event_id=%s | user_id=%s | req_id=%s | qty=%d | limit=%d", req.EventID, req.UserID, reqID, req.Quantity, req.MaxLimit)
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",

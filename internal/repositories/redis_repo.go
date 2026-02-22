@@ -44,12 +44,12 @@ func (r *RedisRepo) InitializeEvent(ctx context.Context, eventID string, stock i
 	created, err := r.rdb.SetNX(ctx, key, stock, 0).Result()
 
 	if err != nil {
-		log.Printf("[REPO][ERROR] Failed to execute SetNX | event_id=%s | err=%v", eventID, err)
+		log.Printf("[REPO][ERROR] Failed to execute SetNX | event_id=%s | stock=%d | err=%v", eventID, stock, err)
 		return fmt.Errorf("failed to set stock in redis for event %s: %w", eventID, err)
 	}
 
 	if !created {
-		log.Printf("[REPO][WARN] Event already initialized | event_id=%s", eventID)
+		log.Printf("[REPO][WARN] Event already initialized | event_id=%s | stock=%d", eventID, stock)
 		return fmt.Errorf("event %s already exists", eventID)
 	}
 
@@ -62,18 +62,18 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 	keys := []string{
 		fmt.Sprintf("ticket:stock:%s", eventID),
 		fmt.Sprintf("ticket:history:%s:%s", eventID, userID),
-		fmt.Sprintf("req_processed:%s", reqID),
+		fmt.Sprintf("ticket:req_processed:%s:%s", eventID, reqID),
 	}
 
 	args := []interface{}{qty, limit, 86400}
 
 	res, err := r.rdb.EvalSha(ctx, r.scriptSHA, keys, args...).Int()
 	if err != nil {
-		log.Printf("[REPO][ERROR] Lua script execution failed | req_id=%s | err=%v", reqID, err)
+		log.Printf("[REPO][ERROR] Lua script execution failed | event_id=%s | user_id=%s | req_id=%s | qty=%d | limit=%d | err=%v", eventID, userID, reqID, qty, limit, err)
 		return err
 	}
 
-	log.Printf("[REPO][INFO] Lua script result | req_id=%s | res=%d", reqID, res)
+	log.Printf("[REPO][INFO] Lua script result | event_id=%s | user_id=%s | req_id=%s | qty=%d | limit=%d | res=%d", eventID, userID, reqID, qty, limit, res)
 
 	switch res {
 	case luaSuccess:
