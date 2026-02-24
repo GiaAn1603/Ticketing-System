@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"strings"
@@ -88,33 +89,33 @@ func (h *TicketHandler) BuyTicket(c *gin.Context) {
 	if err := h.service.ProcessPurchase(c.Request.Context(), req.EventID, req.UserID, reqID, req.Quantity, req.MaxLimit); err != nil {
 		log.Printf("[HANDLER][WARN] Purchase failed | event_id=%s | user_id=%s | req_id=%s | qty=%d | limit=%d | err=%v", req.EventID, req.UserID, reqID, req.Quantity, req.MaxLimit, err)
 
-		switch err {
-		case apperrors.ErrAlreadyProcessed:
+		switch {
+		case errors.Is(err, apperrors.ErrAlreadyProcessed):
 			c.JSON(http.StatusOK, gin.H{
 				"status":  "success",
 				"message": "Request already processed",
 			})
-		case apperrors.ErrInvalidInput:
+		case errors.Is(err, apperrors.ErrInvalidInput):
 			c.JSON(http.StatusBadRequest, gin.H{
 				"status": "fail",
 				"error":  "Invalid input parameters",
 			})
-		case apperrors.ErrEventNotFound:
+		case errors.Is(err, apperrors.ErrEventNotFound):
 			c.JSON(http.StatusNotFound, gin.H{
 				"status": "fail",
 				"error":  "Event not found",
 			})
-		case apperrors.ErrOutOfStock:
+		case errors.Is(err, apperrors.ErrOutOfStock):
 			c.JSON(http.StatusConflict, gin.H{
 				"status": "fail",
 				"error":  "Sold out",
 			})
-		case apperrors.ErrPurchaseLimitExceeded:
+		case errors.Is(err, apperrors.ErrPurchaseLimitExceeded):
 			c.JSON(http.StatusConflict, gin.H{
 				"status": "fail",
 				"error":  "Purchase limit exceeded",
 			})
-		case apperrors.ErrInternal:
+		case errors.Is(err, apperrors.ErrInternal):
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status": "error",
 				"error":  "Internal database error",
