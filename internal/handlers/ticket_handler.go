@@ -3,6 +3,7 @@ package handlers
 import (
 	"Ticketing-System/internal/models"
 	"Ticketing-System/internal/services"
+	"errors"
 	"log"
 	"net/http"
 	"strings"
@@ -94,33 +95,33 @@ func (h *TicketHandler) BuyTicket(c *gin.Context) {
 	if err := h.service.ProcessPurchase(c.Request.Context(), req.EventID, req.UserID, reqID, req.Quantity, req.MaxLimit); err != nil {
 		log.Printf("[HANDLER][WARN] Purchase failed | event_id=%s | user_id=%s | req_id=%s | qty=%d | limit=%d | err=%v", req.EventID, req.UserID, reqID, req.Quantity, req.MaxLimit, err)
 
-		switch err {
-		case models.ErrAlreadyProcessed:
+		switch {
+		case errors.Is(err, models.ErrAlreadyProcessed):
 			c.JSON(http.StatusOK, gin.H{
 				"status":  "success",
 				"message": "Request already processed",
 			})
-		case models.ErrInvalidInput:
+		case errors.Is(err, models.ErrInvalidInput):
 			c.JSON(http.StatusBadRequest, gin.H{
 				"status": "fail",
 				"error":  "Invalid input parameters",
 			})
-		case models.ErrLimitExceeded:
+		case errors.Is(err, models.ErrLimitExceeded):
 			c.JSON(http.StatusConflict, gin.H{
 				"status": "fail",
 				"error":  "Purchase limit exceeded",
 			})
-		case models.ErrOutOfStock:
+		case errors.Is(err, models.ErrOutOfStock):
 			c.JSON(http.StatusConflict, gin.H{
 				"status": "fail",
 				"error":  "Sold out",
 			})
-		case models.ErrEventNotFound:
+		case errors.Is(err, models.ErrEventNotFound):
 			c.JSON(http.StatusNotFound, gin.H{
 				"status": "fail",
 				"error":  "Event not found",
 			})
-		case models.ErrInternal:
+		case errors.Is(err, models.ErrInternal):
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status": "error",
 				"error":  "Internal database error",
