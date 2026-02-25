@@ -2,5 +2,5 @@ package scripts
 
 import _ "embed"
 
-//go:embed buy_ticket.lua
+//go:embed lua/buy_ticket.lua
 var BuyTicketScript string
