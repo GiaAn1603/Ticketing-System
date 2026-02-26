@@ -4,6 +4,7 @@ import (
 	"Ticketing-System/internal/config"
 	"Ticketing-System/internal/handlers"
 	"Ticketing-System/internal/infrastructure"
+	"Ticketing-System/internal/middlewares"
 	"Ticketing-System/internal/repositories"
 	"Ticketing-System/internal/services"
 	"context"
@@ -24,6 +25,12 @@ func main() {
 		log.Fatalf("[MAIN][FATAL] Failed to connect Redis | err=%v", err)
 	}
 	defer rdb.Close()
+
+	rateLimiter, err := middlewares.NewRateLimiter(ctx, rdb, 10, 5, 500*time.Millisecond)
+	if err != nil {
+		log.Fatalf("[MAIN][FATAL] Failed to init RateLimiter | err=%v", err)
+	}
+	_ = rateLimiter
 
 	redisRepo, err := repositories.NewRedisRepo(ctx, rdb)
 	if err != nil {
