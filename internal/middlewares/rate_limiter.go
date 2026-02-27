@@ -5,8 +5,10 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -39,4 +41,62 @@ func NewRateLimiter(ctx context.Context, rdb *redis.Client, capacity, rate int, 
 		timeout:   timeout,
 		scriptSHA: sha,
 	}, nil
+}
+
+func (rl *RateLimiter) Limit(c *gin.Context) {
+	clientIP := c.ClientIP()
+	keys := []string{fmt.Sprintf("ticket:rate_limit:bucket:%s", clientIP)}
+	args := []interface{}{rl.capacity, rl.rate, 1}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), rl.timeout)
+	defer cancel()
+
+	rawResult, err := rl.rdb.EvalSha(ctx, rl.scriptSHA, keys, args...).Result()
+	if err != nil {
+		log.Printf("[MIDDLEWARE][ERROR] Lua script execution failed | ip=%s | err=%v", clientIP, err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	results, isArray := rawResult.([]interface{})
+	if !isArray || len(results) < 2 {
+		log.Printf("[MIDDLEWARE][ERROR] Invalid Lua response format | ip=%s", clientIP)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	statusCode, isValidStatus := results[0].(int64)
+	remainingTokens, isValidTokens := results[1].(int64)
+
+	if !isValidStatus || !isValidTokens {
+		log.Printf("[MIDDLEWARE][ERROR] Invalid Lua response types | ip=%s", clientIP)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	c.Header("X-RateLimit-Limit", fmt.Sprintf("%d", rl.capacity))
+	c.Header("X-RateLimit-Remaining", fmt.Sprintf("%d", remainingTokens))
+
+	switch statusCode {
+	case luaSuccess:
+		c.Next()
+	case luaInvalidInput:
+		log.Printf("[MIDDLEWARE][ERROR] Invalid Lua parameters | ip=%s", clientIP)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status": "error",
+			"error":  "Internal server error",
+		})
+	case luaLimitExceeded:
+		log.Printf("[MIDDLEWARE][WARN] Rate limit exceeded | ip=%s", clientIP)
+		c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+			"status": "fail",
+			"error":  "Too many requests, please try again later",
+		})
+	default:
+		log.Printf("[MIDDLEWARE][ERROR] Unknown Lua result | ip=%s | code=%d", clientIP, statusCode)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status": "error",
+			"error":  "Internal server error",
+		})
+	}
 }
