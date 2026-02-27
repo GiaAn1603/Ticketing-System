@@ -30,7 +30,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("[MAIN][FATAL] Failed to init RateLimiter | err=%v", err)
 	}
-	_ = rateLimiter
 
 	redisRepo, err := repositories.NewRedisRepo(ctx, rdb)
 	if err != nil {
@@ -51,8 +50,8 @@ func main() {
 		})
 	})
 
-	r.POST("/init-ticket", ticketHandler.InitTicket)
-	r.POST("/buy-ticket", ticketHandler.BuyTicket)
+	r.POST("/init-ticket", rateLimiter.Limit, ticketHandler.InitTicket)
+	r.POST("/buy-ticket", rateLimiter.Limit, ticketHandler.BuyTicket)
 
 	log.Printf("[MAIN][INFO] Server started | url=http://localhost%s", cfg.ServerPort)
 	if err := r.Run(cfg.ServerPort); err != nil {
