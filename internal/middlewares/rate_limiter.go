@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 
+	"Ticketing-System/internal/utils"
 	"Ticketing-System/scripts"
 )
 
@@ -20,11 +21,12 @@ const (
 )
 
 type RateLimiter struct {
-	rdb       *redis.Client
-	capacity  int
-	rate      int
-	timeout   time.Duration
-	scriptSHA string
+	rdb        *redis.Client
+	capacity   int
+	rate       int
+	timeout    time.Duration
+	scriptSHA  string
+	scriptBody string
 }
 
 func NewRateLimiter(ctx context.Context, rdb *redis.Client, capacity, rate int, timeout time.Duration) (*RateLimiter, error) {
@@ -36,11 +38,12 @@ func NewRateLimiter(ctx context.Context, rdb *redis.Client, capacity, rate int, 
 	log.Printf("[MIDDLEWARE][INFO] Lua script loaded successfully | sha=%s", sha)
 
 	return &RateLimiter{
-		rdb:       rdb,
-		capacity:  capacity,
-		rate:      rate,
-		timeout:   timeout,
-		scriptSHA: sha,
+		rdb:        rdb,
+		capacity:   capacity,
+		rate:       rate,
+		timeout:    timeout,
+		scriptSHA:  sha,
+		scriptBody: scripts.RateLimitScript,
 	}, nil
 }
 
@@ -52,7 +55,7 @@ func (rl *RateLimiter) Limit(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), rl.timeout)
 	defer cancel()
 
-	rawResult, err := rl.rdb.EvalSha(ctx, rl.scriptSHA, keys, args...).Result()
+	rawResult, err := utils.EvalShaWithFallback(ctx, rl.rdb, rl.scriptSHA, rl.scriptBody, keys, args...).Result()
 	if err != nil {
 		log.Printf("[MIDDLEWARE][ERROR] Lua script execution failed | ip=%s | err=%v", clientIP, err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})

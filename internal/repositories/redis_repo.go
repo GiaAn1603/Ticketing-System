@@ -8,6 +8,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"Ticketing-System/internal/models"
+	"Ticketing-System/internal/utils"
 	"Ticketing-System/scripts"
 )
 
@@ -21,8 +22,9 @@ const (
 )
 
 type RedisRepo struct {
-	rdb       *redis.Client
-	scriptSHA string
+	rdb        *redis.Client
+	scriptSHA  string
+	scriptBody string
 }
 
 func NewRedisRepo(ctx context.Context, rdb *redis.Client) (*RedisRepo, error) {
@@ -34,8 +36,9 @@ func NewRedisRepo(ctx context.Context, rdb *redis.Client) (*RedisRepo, error) {
 	log.Printf("[REPO][INFO] Lua script loaded successfully | sha=%s", sha)
 
 	return &RedisRepo{
-		rdb:       rdb,
-		scriptSHA: sha,
+		rdb:        rdb,
+		scriptSHA:  sha,
+		scriptBody: scripts.BuyTicketScript,
 	}, nil
 }
 
@@ -68,7 +71,7 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 
 	args := []interface{}{qty, limit, 86400}
 
-	res, err := r.rdb.EvalSha(ctx, r.scriptSHA, keys, args...).Int()
+	res, err := utils.EvalShaWithFallback(ctx, r.rdb, r.scriptSHA, r.scriptBody, keys, args...).Int()
 	if err != nil {
 		log.Printf("[REPO][ERROR] Lua script execution failed | event_id=%s | user_id=%s | req_id=%s | qty=%d | limit=%d | err=%v", eventID, userID, reqID, qty, limit, err)
 		return err
