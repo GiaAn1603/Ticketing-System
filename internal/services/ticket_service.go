@@ -4,16 +4,19 @@ import (
 	"context"
 	"log"
 
+	"Ticketing-System/internal/events"
 	"Ticketing-System/internal/repositories"
 )
 
 type TicketService struct {
 	redisRepo *repositories.RedisRepo
+	producer  *events.KafkaProducer
 }
 
-func NewTicketService(redisRepo *repositories.RedisRepo) *TicketService {
+func NewTicketService(redisRepo *repositories.RedisRepo, producer *events.KafkaProducer) *TicketService {
 	return &TicketService{
 		redisRepo: redisRepo,
+		producer:  producer,
 	}
 }
 
