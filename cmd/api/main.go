@@ -2,6 +2,7 @@ package main
 
 import (
 	"Ticketing-System/internal/config"
+	"Ticketing-System/internal/events"
 	"Ticketing-System/internal/handlers"
 	"Ticketing-System/internal/infrastructure"
 	"Ticketing-System/internal/middlewares"
@@ -34,6 +35,14 @@ func main() {
 		rdb.Close()
 	}()
 
+	kafkaBrokers := []string{cfg.KafkaAddr}
+	kafkaTopic := "orders"
+	kafkaProducer := events.NewKafkaProducer(kafkaBrokers, kafkaTopic)
+	defer func() {
+		log.Println("[MAIN][INFO] Closing Kafka connection")
+		kafkaProducer.Close()
+	}()
+
 	rateLimiter, err := middlewares.NewRateLimiter(startupCtx, rdb, 10, 5, 500*time.Millisecond)
 	if err != nil {
 		log.Fatalf("[MAIN][FATAL] Failed to init RateLimiter | err=%v", err)
@@ -44,7 +53,7 @@ func main() {
 		log.Fatalf("[MAIN][FATAL] Failed to init RedisRepo | err=%v", err)
 	}
 
-	ticketService := services.NewTicketService(redisRepo)
+	ticketService := services.NewTicketService(redisRepo, kafkaProducer)
 	ticketHandler := handlers.NewTicketHandler(ticketService)
 
 	gin.SetMode(gin.ReleaseMode)
