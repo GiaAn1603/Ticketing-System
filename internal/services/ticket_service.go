@@ -19,12 +19,12 @@ func NewTicketService(redisRepo *repositories.RedisRepo, producer *events.KafkaP
 	}
 }
 
-func (s *TicketService) InitializeEvent(ctx context.Context, eventID string, stock int) error {
-	log.Printf("[SERVICE][INFO] Processing init event | event_id=%s | stock=%d", eventID, stock)
-	return s.redisRepo.InitializeEvent(ctx, eventID, stock)
+func (s *TicketService) InitializeEvent(ctx context.Context, eventID string, stock, limit int) error {
+	log.Printf("[SERVICE][INFO] Processing init event | event_id=%s | stock=%d | limit=%d", eventID, stock, limit)
+	return s.redisRepo.InitializeEvent(ctx, eventID, stock, limit)
 }
 
-func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, reqID string, qty, limit int) error {
-	log.Printf("[SERVICE][INFO] Processing purchase | event_id=%s | user_id=%s | req_id=%s | qty=%d | limit=%d", eventID, userID, reqID, qty, limit)
-	return s.redisRepo.PurchaseTicket(ctx, eventID, userID, reqID, qty, limit)
+func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, reqID string, qty int) error {
+	log.Printf("[SERVICE][INFO] Processing purchase | event_id=%s | user_id=%s | req_id=%s | qty=%d", eventID, userID, reqID, qty)
+	return s.redisRepo.PurchaseTicket(ctx, eventID, userID, reqID, qty)
 }
