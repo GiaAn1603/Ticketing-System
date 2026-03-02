@@ -36,8 +36,8 @@ func (h *TicketHandler) InitTicket(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.InitializeEvent(c.Request.Context(), req.EventID, req.Stock); err != nil {
-		log.Printf("[HANDLER][ERROR] Init event failed | event_id=%s | stock=%d | err=%v", req.EventID, req.Stock, err)
+	if err := h.service.InitializeEvent(c.Request.Context(), req.EventID, req.Stock, req.MaxLimit); err != nil {
+		log.Printf("[HANDLER][ERROR] Init event failed | event_id=%s | stock=%d | limit=%d | err=%v", req.EventID, req.Stock, req.MaxLimit, err)
 
 		if strings.Contains(err.Error(), "already exists") {
 			c.JSON(http.StatusConflict, gin.H{
@@ -54,7 +54,7 @@ func (h *TicketHandler) InitTicket(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[HANDLER][INFO] Init event successful | event_id=%s | stock=%d", req.EventID, req.Stock)
+	log.Printf("[HANDLER][INFO] Init event successful | event_id=%s | stock=%d | limit=%d", req.EventID, req.Stock, req.MaxLimit)
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":   "success",
@@ -77,7 +77,7 @@ func (h *TicketHandler) BuyTicket(c *gin.Context) {
 
 	reqID := c.GetHeader("X-Request-ID")
 	if reqID == "" {
-		log.Printf("[HANDLER][WARN] Missing X-Request-ID | event_id=%s | user_id=%s | qty=%d | limit=%d", req.EventID, req.UserID, req.Quantity, req.MaxLimit)
+		log.Printf("[HANDLER][WARN] Missing X-Request-ID | event_id=%s | user_id=%s | qty=%d", req.EventID, req.UserID, req.Quantity)
 
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status": "fail",
@@ -86,8 +86,8 @@ func (h *TicketHandler) BuyTicket(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.ProcessPurchase(c.Request.Context(), req.EventID, req.UserID, reqID, req.Quantity, req.MaxLimit); err != nil {
-		log.Printf("[HANDLER][WARN] Purchase failed | event_id=%s | user_id=%s | req_id=%s | qty=%d | limit=%d | err=%v", req.EventID, req.UserID, reqID, req.Quantity, req.MaxLimit, err)
+	if err := h.service.ProcessPurchase(c.Request.Context(), req.EventID, req.UserID, reqID, req.Quantity); err != nil {
+		log.Printf("[HANDLER][WARN] Purchase failed | event_id=%s | user_id=%s | req_id=%s | qty=%d | err=%v", req.EventID, req.UserID, reqID, req.Quantity, err)
 
 		switch {
 		case errors.Is(err, apperrors.ErrAlreadyProcessed):
@@ -130,7 +130,7 @@ func (h *TicketHandler) BuyTicket(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[HANDLER][INFO] Purchase successful | event_id=%s | user_id=%s | req_id=%s | qty=%d | limit=%d", req.EventID, req.UserID, reqID, req.Quantity, req.MaxLimit)
+	log.Printf("[HANDLER][INFO] Purchase successful | event_id=%s | user_id=%s | req_id=%s | qty=%d", req.EventID, req.UserID, reqID, req.Quantity)
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
