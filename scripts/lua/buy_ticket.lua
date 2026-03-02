@@ -7,14 +7,14 @@ local ERR_OUT_OF_STOCK = -3
 local ERR_EVENT_NOT_FOUND = -4
 
 local stock_key = KEYS[1]
-local user_history_key = KEYS[2]
-local request_key = KEYS[3]
+local limit_key = KEYS[2]
+local user_history_key = KEYS[3]
+local request_key = KEYS[4]
 
 local buy_quantity = tonumber(ARGV[1] or "0")
-local max_limit = tonumber(ARGV[2] or "0")
-local ttl_seconds = tonumber(ARGV[3] or "86400")
+local ttl_seconds = tonumber(ARGV[2] or "86400")
 
-if buy_quantity <= 0 or max_limit <= 0 then
+if buy_quantity <= 0 then
   return ERR_INVALID_INPUT
 end
 
@@ -33,7 +33,9 @@ if stock < buy_quantity then
   return ERR_OUT_OF_STOCK
 end
 
+local max_limit = tonumber(redis.call("GET", limit_key) or "1")
 local current_bought = tonumber(redis.call("GET", user_history_key) or "0")
+
 if current_bought + buy_quantity > max_limit then
   return ERR_LIMIT_EXCEEDED
 end
