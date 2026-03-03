@@ -75,8 +75,11 @@ func NewKafkaProducer(brokers []string, topic string) (*KafkaProducer, error) {
 		Topic:                  topic,
 		Balancer:               &kafka.Hash{},
 		AllowAutoTopicCreation: false,
-		WriteTimeout:           10 * time.Second,
-		ReadTimeout:            10 * time.Second,
+		BatchSize:              100,
+		BatchTimeout:           10 * time.Millisecond,
+		RequiredAcks:           kafka.RequireAll,
+		WriteTimeout:           5 * time.Second,
+		ReadTimeout:            5 * time.Second,
 	}
 
 	log.Printf("[KAFKA][INFO] Producer initialized | brokers=%v | topic=%s", brokers, topic)
