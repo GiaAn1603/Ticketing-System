@@ -10,6 +10,7 @@ import (
 	"Ticketing-System/internal/services"
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -20,7 +21,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func main() {
+func run() error {
 	cfg := config.LoadConfig()
 
 	startupCtx, startupCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -28,7 +29,7 @@ func main() {
 
 	rdb, err := infrastructure.ConnectRedis(startupCtx, cfg.RedisAddr)
 	if err != nil {
-		log.Fatalf("[MAIN][FATAL] Failed to connect Redis | err=%v", err)
+		return fmt.Errorf("failed to connect redis: %w", err)
 	}
 	defer func() {
 		log.Println("[MAIN][INFO] Closing Redis connection")
@@ -49,12 +50,12 @@ func main() {
 
 	rateLimiter, err := middlewares.NewRateLimiter(startupCtx, rdb, 10, 5, 500*time.Millisecond)
 	if err != nil {
-		log.Fatalf("[MAIN][FATAL] Failed to init RateLimiter | err=%v", err)
+		return fmt.Errorf("failed to init rate limiter: %w", err)
 	}
 
 	redisRepo, err := repositories.NewRedisRepo(startupCtx, rdb)
 	if err != nil {
-		log.Fatalf("[MAIN][FATAL] Failed to init RedisRepo | err=%v", err)
+		return fmt.Errorf("failed to init redis repo: %w", err)
 	}
 
 	ticketService := services.NewTicketService(redisRepo, kafkaProducer)
@@ -75,29 +76,49 @@ func main() {
 	r.POST("/api/buy-ticket", rateLimiter.Limit, ticketHandler.BuyTicket)
 
 	srv := &http.Server{
-		Addr:    cfg.ServerPort,
-		Handler: r,
+		Addr:         cfg.ServerPort,
+		Handler:      r,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  15 * time.Second,
 	}
+
+	srvErrChan := make(chan error, 1)
 
 	go func() {
 		log.Printf("[MAIN][INFO] Server started | url=http://localhost%s", cfg.ServerPort)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("[MAIN][FATAL] Failed to start server | err=%v", err)
+			srvErrChan <- err
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	signalCtx, signalCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer signalCancel()
 
-	<-quit
+	select {
+	case err := <-srvErrChan:
+		return fmt.Errorf("server stopped unexpectedly: %w", err)
+	case <-signalCtx.Done():
+		log.Println("[MAIN][INFO] Received shutdown signal")
+	}
+
 	log.Println("[MAIN][INFO] Shutting down server")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("[MAIN][FATAL] Server forced to shutdown | err=%v", err)
+		return fmt.Errorf("server forced to shutdown: %w", err)
 	}
 
 	log.Println("[MAIN][INFO] Server exited")
+
+	return nil
+}
+
+func main() {
+	if err := run(); err != nil {
+		log.Printf("[MAIN][FATAL] Application startup failed | err=%v", err)
+		os.Exit(1)
+	}
 }
