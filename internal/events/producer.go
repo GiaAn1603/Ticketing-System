@@ -85,6 +85,15 @@ func NewKafkaProducer(brokers []string, topic string) (*KafkaProducer, error) {
 		ReadTimeout:            5 * time.Second,
 	}
 
+	log.Printf("[KAFKA][INFO] Warming up connection to topic %s", topic)
+
+	if conn, err := kafka.DialLeader(context.Background(), "tcp", brokers[0], topic, 0); err != nil {
+		log.Printf("[KAFKA][WARN] Warm-up connection failed: %v", err)
+	} else {
+		conn.Close()
+		log.Printf("[KAFKA][INFO] Warm-up connection successful")
+	}
+
 	log.Printf("[KAFKA][INFO] Producer initialized | brokers=%v | topic=%s", brokers, topic)
 
 	return &KafkaProducer{
