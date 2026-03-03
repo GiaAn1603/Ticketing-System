@@ -32,7 +32,9 @@ func main() {
 	}
 	defer func() {
 		log.Println("[MAIN][INFO] Closing Redis connection")
-		rdb.Close()
+		if err := rdb.Close(); err != nil {
+			log.Printf("[MAIN][WARN] Redis close error: %v", err)
+		}
 	}()
 
 	kafkaBrokers := []string{cfg.KafkaAddr}
@@ -40,7 +42,9 @@ func main() {
 	kafkaProducer := events.NewKafkaProducer(kafkaBrokers, kafkaTopic)
 	defer func() {
 		log.Println("[MAIN][INFO] Closing Kafka connection")
-		kafkaProducer.Close()
+		if err := kafkaProducer.Close(); err != nil {
+			log.Printf("[MAIN][WARN] Kafka close error: %v", err)
+		}
 	}()
 
 	rateLimiter, err := middlewares.NewRateLimiter(startupCtx, rdb, 10, 5, 500*time.Millisecond)
