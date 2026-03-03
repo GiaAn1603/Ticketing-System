@@ -58,7 +58,7 @@ func (r *RedisRepo) InitializeEvent(ctx context.Context, eventID string, stock, 
 	err = r.rdb.Set(ctx, limitKey, limit, 0).Err()
 	if err != nil {
 		log.Printf("[REPO][ERROR] Failed to set limit | event_id=%s | stock=%d | limit=%d | err=%v", eventID, stock, limit, err)
-		return fmt.Errorf("failed to set limit in redis: %w", err)
+		return fmt.Errorf("failed to set limit for event %s: %w", eventID, err)
 	}
 
 	log.Printf("[REPO][INFO] Event initialized successfully | event_id=%s | stock=%d | limit=%d", eventID, stock, limit)
@@ -79,7 +79,7 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 	res, err := utils.EvalShaWithFallback(ctx, r.rdb, r.scriptSHA, r.scriptBody, keys, args...).Int()
 	if err != nil {
 		log.Printf("[REPO][ERROR] Lua script execution failed | event_id=%s | user_id=%s | req_id=%s | qty=%d | err=%v", eventID, userID, reqID, qty, err)
-		return err
+		return fmt.Errorf("failed to execute buy ticket script for event %s: %w", eventID, err)
 	}
 
 	log.Printf("[REPO][INFO] Lua script result | event_id=%s | user_id=%s | req_id=%s | qty=%d | res=%d", eventID, userID, reqID, qty, res)
@@ -98,6 +98,6 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 	case luaEventNotFound:
 		return models.ErrEventNotFound
 	default:
-		return models.ErrInternal
+		return fmt.Errorf("unexpected lua response code %d: %w", res, models.ErrInternal)
 	}
 }
