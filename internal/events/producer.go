@@ -1,6 +1,8 @@
 package events
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -8,6 +10,8 @@ import (
 	"time"
 
 	"github.com/segmentio/kafka-go"
+
+	"Ticketing-System/internal/models"
 )
 
 type KafkaProducer struct {
@@ -87,6 +91,27 @@ func NewKafkaProducer(brokers []string, topic string) (*KafkaProducer, error) {
 	return &KafkaProducer{
 		writer: w,
 	}, nil
+}
+
+func (p *KafkaProducer) PublishOrderEvent(ctx context.Context, event models.OrderEvent) error {
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("failed to marshal event %s: %w", event.RequestID, err)
+	}
+
+	msg := kafka.Message{
+		Key:   []byte(event.UserID),
+		Value: payload,
+		Time:  time.Now(),
+	}
+
+	if err := p.writer.WriteMessages(ctx, msg); err != nil {
+		return fmt.Errorf("failed to write message to kafka for request %s: %w", event.RequestID, err)
+	}
+
+	log.Printf("[KAFKA][INFO] Published OrderEvent | event_id=%s | user_id=%s | req_id=%s | qty=%d", event.EventID, event.UserID, event.RequestID, event.Quantity)
+
+	return nil
 }
 
 func (p *KafkaProducer) Close() error {
