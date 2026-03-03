@@ -2,10 +2,12 @@ package services
 
 import (
 	"Ticketing-System/internal/events"
+	"Ticketing-System/internal/models"
 	"Ticketing-System/internal/repositories"
 	"context"
 	"fmt"
 	"log"
+	"time"
 )
 
 type TicketService struct {
@@ -35,6 +37,20 @@ func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, re
 
 	if err := s.redisRepo.PurchaseTicket(ctx, eventID, userID, reqID, qty); err != nil {
 		return fmt.Errorf("service failed to process purchase for user %s: %w", userID, err)
+	}
+
+	event := models.OrderEvent{
+		EventID:   eventID,
+		UserID:    userID,
+		RequestID: reqID,
+		Quantity:  qty,
+		Status:    "Processing",
+		Timestamp: time.Now(),
+	}
+
+	if err := s.producer.PublishOrderEvent(ctx, event); err != nil {
+		log.Printf("[SERVICE][ERROR] Failed to publish order event | event_id=%s | user_id=%s | req_id=%s | qty=%d", eventID, userID, reqID, qty)
+		return fmt.Errorf("service failed to publish event for user %s: %w", userID, err)
 	}
 
 	return nil
