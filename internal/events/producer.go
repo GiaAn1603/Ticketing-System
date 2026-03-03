@@ -1,6 +1,7 @@
 package events
 
 import (
+	"fmt"
 	"log"
 	"time"
 
@@ -29,5 +30,9 @@ func NewKafkaProducer(brokers []string, topic string) *KafkaProducer {
 }
 
 func (p *KafkaProducer) Close() error {
-	return p.writer.Close()
+	if err := p.writer.Close(); err != nil {
+		return fmt.Errorf("failed to close kafka producer: %w", err)
+	}
+
+	return nil
 }
