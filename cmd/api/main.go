@@ -40,7 +40,10 @@ func run() error {
 
 	kafkaBrokers := []string{cfg.KafkaAddr}
 	kafkaTopic := "orders"
-	kafkaProducer := events.NewKafkaProducer(kafkaBrokers, kafkaTopic)
+	kafkaProducer, err := events.NewKafkaProducer(kafkaBrokers, kafkaTopic)
+	if err != nil {
+		return fmt.Errorf("failed to init kafka producer: %w", err)
+	}
 	defer func() {
 		log.Println("[MAIN][INFO] Closing Kafka connection")
 		if err := kafkaProducer.Close(); err != nil {
