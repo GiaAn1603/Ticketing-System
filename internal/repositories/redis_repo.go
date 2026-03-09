@@ -47,18 +47,14 @@ func (r *RedisRepo) InitializeEvent(ctx context.Context, eventID string, stock, 
 
 	created, err := r.rdb.SetNX(ctx, stockKey, stock, 0).Result()
 	if err != nil {
-		log.Printf("[REPO][ERROR] Failed to execute SetNX | event_id=%s | stock=%d | limit=%d | err=%v", eventID, stock, limit, err)
-		return fmt.Errorf("failed to set stock in redis for event %s: %w", eventID, err)
+		return fmt.Errorf("failed to set stock for event %s in redis: %w", eventID, err)
 	}
 	if !created {
-		log.Printf("[REPO][WARN] Event already initialized | event_id=%s | stock=%d | limit=%d", eventID, stock, limit)
-		return fmt.Errorf("event %s already exists", eventID)
+		return fmt.Errorf("event %s already exists in redis", eventID)
 	}
 
-	err = r.rdb.Set(ctx, limitKey, limit, 0).Err()
-	if err != nil {
-		log.Printf("[REPO][ERROR] Failed to set limit | event_id=%s | stock=%d | limit=%d | err=%v", eventID, stock, limit, err)
-		return fmt.Errorf("failed to set limit for event %s: %w", eventID, err)
+	if err = r.rdb.Set(ctx, limitKey, limit, 0).Err(); err != nil {
+		return fmt.Errorf("failed to set limit for event %s in redis: %w", eventID, err)
 	}
 
 	log.Printf("[REPO][INFO] Event initialized successfully | event_id=%s | stock=%d | limit=%d", eventID, stock, limit)
@@ -78,8 +74,7 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 
 	res, err := utils.EvalShaWithFallback(ctx, r.rdb, r.scriptSHA, r.scriptBody, keys, args...).Int()
 	if err != nil {
-		log.Printf("[REPO][ERROR] Lua script execution failed | event_id=%s | user_id=%s | req_id=%s | qty=%d | err=%v", eventID, userID, reqID, qty, err)
-		return fmt.Errorf("failed to execute buy ticket script for event %s: %w", eventID, err)
+		return fmt.Errorf("failed to execute buy ticket script for event %s in redis: %w", eventID, err)
 	}
 
 	log.Printf("[REPO][INFO] Lua script result | event_id=%s | user_id=%s | req_id=%s | qty=%d | res=%d", eventID, userID, reqID, qty, res)

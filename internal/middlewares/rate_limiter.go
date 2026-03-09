@@ -56,15 +56,23 @@ func (rl *RateLimiter) Limit(c *gin.Context) {
 
 	rawResult, err := utils.EvalShaWithFallback(ctx, rl.rdb, rl.scriptSHA, rl.scriptBody, keys, args...).Result()
 	if err != nil {
-		log.Printf("[MIDDLEWARE][ERROR] Lua script execution failed | ip=%s | err=%v", clientIP, err)
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		log.Printf("[MIDDLEWARE][ERROR] Lua script execution failed | client_ip=%s | err=%v", clientIP, err)
+
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status": "error",
+			"error":  "Internal server error",
+		})
 		return
 	}
 
 	results, isArray := rawResult.([]interface{})
 	if !isArray || len(results) < 2 {
-		log.Printf("[MIDDLEWARE][ERROR] Invalid Lua response format | ip=%s", clientIP)
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		log.Printf("[MIDDLEWARE][ERROR] Invalid Lua response format | client_ip=%s", clientIP)
+
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status": "error",
+			"error":  "Internal server error",
+		})
 		return
 	}
 
@@ -72,8 +80,12 @@ func (rl *RateLimiter) Limit(c *gin.Context) {
 	remainingTokens, isValidTokens := results[1].(int64)
 
 	if !isValidStatus || !isValidTokens {
-		log.Printf("[MIDDLEWARE][ERROR] Invalid Lua response types | ip=%s", clientIP)
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		log.Printf("[MIDDLEWARE][ERROR] Invalid Lua response types | client_ip=%s", clientIP)
+
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"status": "error",
+			"error":  "Internal server error",
+		})
 		return
 	}
 
@@ -84,19 +96,22 @@ func (rl *RateLimiter) Limit(c *gin.Context) {
 	case luaSuccess:
 		c.Next()
 	case luaInvalidInput:
-		log.Printf("[MIDDLEWARE][ERROR] Invalid Lua parameters | ip=%s", clientIP)
+		log.Printf("[MIDDLEWARE][ERROR] Invalid Lua parameters | client_ip=%s", clientIP)
+
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status": "error",
 			"error":  "Internal server error",
 		})
 	case luaLimitExceeded:
-		log.Printf("[MIDDLEWARE][WARN] Rate limit exceeded | ip=%s", clientIP)
+		log.Printf("[MIDDLEWARE][WARN] Rate limit exceeded | client_ip=%s", clientIP)
+
 		c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 			"status": "fail",
 			"error":  "Too many requests, please try again later",
 		})
 	default:
-		log.Printf("[MIDDLEWARE][ERROR] Unknown Lua result | ip=%s | code=%d", clientIP, statusCode)
+		log.Printf("[MIDDLEWARE][ERROR] Unknown Lua result | client_ip=%s | code=%d", clientIP, statusCode)
+
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status": "error",
 			"error":  "Internal server error",
