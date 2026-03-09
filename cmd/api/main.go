@@ -32,9 +32,9 @@ func run() error {
 		return fmt.Errorf("failed to connect redis: %w", err)
 	}
 	defer func() {
-		log.Println("[MAIN][INFO] Closing Redis connection")
+		log.Println("[MAIN][INFO] Closing Redis connection | action=close_redis")
 		if err := rdb.Close(); err != nil {
-			log.Printf("[MAIN][WARN] Redis close error: %v", err)
+			log.Printf("[MAIN][WARN] Redis close error | err=%v", err)
 		}
 	}()
 
@@ -45,9 +45,9 @@ func run() error {
 		return fmt.Errorf("failed to init kafka producer: %w", err)
 	}
 	defer func() {
-		log.Println("[MAIN][INFO] Closing Kafka connection")
+		log.Println("[MAIN][INFO] Closing Kafka connection | action=close_kafka")
 		if err := kafkaProducer.Close(); err != nil {
-			log.Printf("[MAIN][WARN] Kafka close error: %v", err)
+			log.Printf("[MAIN][WARN] Kafka close error | err=%v", err)
 		}
 	}()
 
@@ -91,6 +91,7 @@ func run() error {
 	go func() {
 		log.Printf("[MAIN][INFO] Server started | url=http://localhost%s", cfg.ServerPort)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("[MAIN][ERROR] HTTP server crashed | err=%v", err)
 			srvErrChan <- err
 		}
 	}()
@@ -102,10 +103,10 @@ func run() error {
 	case err := <-srvErrChan:
 		return fmt.Errorf("server stopped unexpectedly: %w", err)
 	case <-signalCtx.Done():
-		log.Println("[MAIN][INFO] Received shutdown signal")
+		log.Println("[MAIN][INFO] Received shutdown signal | signal=SIGINT/SIGTERM")
 	}
 
-	log.Println("[MAIN][INFO] Shutting down server")
+	log.Println("[MAIN][INFO] Shutting down server | status=in_progress")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
@@ -114,7 +115,7 @@ func run() error {
 		return fmt.Errorf("server forced to shutdown: %w", err)
 	}
 
-	log.Println("[MAIN][INFO] Server exited")
+	log.Println("[MAIN][INFO] Server exited | status=done")
 
 	return nil
 }
