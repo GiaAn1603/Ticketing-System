@@ -3,6 +3,7 @@ package main
 import (
 	"Ticketing-System/internal/config"
 	"Ticketing-System/internal/infrastructure"
+	"Ticketing-System/internal/repositories"
 	"context"
 	"fmt"
 	"log"
@@ -29,6 +30,9 @@ func run() error {
 			log.Printf("[WORKER][WARN] Postgres close error | err=%v", err)
 		}
 	}()
+
+	pgRepo := repositories.NewPostgresRepo(pgDB)
+	_ = pgRepo
 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
