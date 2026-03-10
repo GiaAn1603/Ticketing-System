@@ -68,7 +68,7 @@ func ensureTopicExists(brokers []string, topic string) error {
 	return nil
 }
 
-func NewKafkaProducer(brokers []string, topic string) (*KafkaProducer, error) {
+func NewKafkaProducer(ctx context.Context, brokers []string, topic string) (*KafkaProducer, error) {
 	if err := ensureTopicExists(brokers, topic); err != nil {
 		return nil, fmt.Errorf("failed to set up kafka brokers %v for topic %s: %w", brokers, topic, err)
 	}
@@ -87,7 +87,7 @@ func NewKafkaProducer(brokers []string, topic string) (*KafkaProducer, error) {
 
 	log.Printf("[KAFKA][INFO] Warming up connection | topic=%s", topic)
 
-	if conn, err := kafka.DialLeader(context.Background(), "tcp", brokers[0], topic, 0); err != nil {
+	if conn, err := kafka.DialLeader(ctx, "tcp", brokers[0], topic, 0); err != nil {
 		log.Printf("[KAFKA][WARN] Warm-up connection failed | err=%v", err)
 	} else {
 		conn.Close()
@@ -108,7 +108,7 @@ func (p *KafkaProducer) PublishOrderEvent(ctx context.Context, event models.Orde
 	}
 
 	msg := kafka.Message{
-		Key:   []byte(event.UserID),
+		Key:   []byte(event.RequestID),
 		Value: payload,
 		Time:  time.Now(),
 	}
