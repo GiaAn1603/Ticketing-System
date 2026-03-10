@@ -40,7 +40,7 @@ func run() error {
 
 	kafkaBrokers := []string{cfg.KafkaAddr}
 	kafkaTopic := "orders"
-	kafkaProducer, err := events.NewKafkaProducer(kafkaBrokers, kafkaTopic)
+	kafkaProducer, err := events.NewKafkaProducer(startupCtx, kafkaBrokers, kafkaTopic)
 	if err != nil {
 		return fmt.Errorf("failed to init kafka producer: %w", err)
 	}
