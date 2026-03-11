@@ -2,6 +2,7 @@ package main
 
 import (
 	"Ticketing-System/internal/config"
+	"Ticketing-System/internal/events"
 	"Ticketing-System/internal/infrastructure"
 	"Ticketing-System/internal/repositories"
 	"context"
@@ -32,7 +33,20 @@ func run() error {
 	}()
 
 	pgRepo := repositories.NewPostgresRepo(pgDB)
-	_ = pgRepo
+
+	kafkaBrokers := []string{cfg.KafkaAddr}
+	kafkaTopic := "orders"
+	kafkaGroupID := "ticket_worker_group"
+	kafkaConsumer, err := events.NewKafkaConsumer(startupCtx, kafkaBrokers, kafkaTopic, kafkaGroupID, pgRepo)
+	if err != nil {
+		return fmt.Errorf("failed to init kafka consumer: %w", err)
+	}
+	defer func() {
+		log.Println("[WORKER][INFO] Closing Kafka connection | action=close_kafka")
+		if err := kafkaConsumer.Close(); err != nil {
+			log.Printf("[WORKER][WARN] Kafka close error | err=%v", err)
+		}
+	}()
 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
