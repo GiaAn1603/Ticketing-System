@@ -20,9 +20,9 @@ func NewPostgresRepo(db *sql.DB) *PostgresRepo {
 
 func (r *PostgresRepo) InsertOrderIfNotExists(ctx context.Context, order models.OrderEvent) error {
 	query := `
-		INSERT INTO orders (event_id, user_id, request_id, quantity, status, created_at)
+    INSERT INTO orders (event_id, user_id, request_id, quantity, status, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (request_id) DO NOTHING
+		ON CONFLICT (event_id, user_id, request_id) DO NOTHING
 	`
 
 	result, err := r.db.ExecContext(ctx, query, order.EventID, order.UserID, order.RequestID, order.Quantity, order.Status, order.Timestamp)

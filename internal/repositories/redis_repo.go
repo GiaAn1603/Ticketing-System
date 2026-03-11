@@ -67,7 +67,7 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 		fmt.Sprintf("ticket:stock:%s", eventID),
 		fmt.Sprintf("ticket:limit:%s", eventID),
 		fmt.Sprintf("ticket:history:%s:%s", eventID, userID),
-		fmt.Sprintf("ticket:req_processed:%s:%s", eventID, reqID),
+		fmt.Sprintf("ticket:req_processed:%s:%s:%s", eventID, userID, reqID),
 	}
 
 	args := []interface{}{qty, 86400}
