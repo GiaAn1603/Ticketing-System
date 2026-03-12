@@ -49,6 +49,15 @@ func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, re
 	}
 
 	if err := s.producer.PublishOrderEvent(ctx, event); err != nil {
+		log.Printf("[SERVICE][ERROR] Kafka publish failed, initiating rollback | event_id=%s | user_id=%s | req_id=%s | qty=%d | err=%v", eventID, userID, reqID, qty, err)
+
+		rollbackCtx, rollbackCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer rollbackCancel()
+
+		if rbErr := s.redisRepo.RollbackPurchase(rollbackCtx, eventID, userID, reqID, qty); rbErr != nil {
+			log.Printf("[SERVICE][CRITICAL] Fatal dual-write! Failed to rollback Redis | event_id=%s | user_id=%s | req_id=%s | qty=%d | rollback_err=%v", eventID, userID, reqID, qty, rbErr)
+		}
+
 		return fmt.Errorf("failed to publish event to kafka for request %s: %w", reqID, err)
 	}
 
