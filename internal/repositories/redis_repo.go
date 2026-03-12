@@ -21,23 +21,32 @@ const (
 )
 
 type RedisRepo struct {
-	rdb        *redis.Client
-	scriptSHA  string
-	scriptBody string
+	rdb                *redis.Client
+	buyScriptSHA       string
+	buyScriptBody      string
+	rollbackScriptSHA  string
+	rollbackScriptBody string
 }
 
 func NewRedisRepo(ctx context.Context, rdb *redis.Client) (*RedisRepo, error) {
-	sha, err := rdb.ScriptLoad(ctx, scripts.BuyTicketScript).Result()
+	buySHA, err := rdb.ScriptLoad(ctx, scripts.BuyTicketScript).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load buy_ticket lua script: %w", err)
 	}
 
-	log.Printf("[REPO][INFO] Lua script loaded successfully | sha=%s", sha)
+	rollbackSHA, err := rdb.ScriptLoad(ctx, scripts.RollbackTicketScript).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load rollback_ticket lua script: %w", err)
+	}
+
+	log.Printf("[REPO][INFO] Lua script loaded successfully | buy_sha=%s | rollback_sha=%s", buySHA, rollbackSHA)
 
 	return &RedisRepo{
-		rdb:        rdb,
-		scriptSHA:  sha,
-		scriptBody: scripts.BuyTicketScript,
+		rdb:                rdb,
+		buyScriptSHA:       buySHA,
+		buyScriptBody:      scripts.BuyTicketScript,
+		rollbackScriptSHA:  rollbackSHA,
+		rollbackScriptBody: scripts.RollbackTicketScript,
 	}, nil
 }
 
@@ -72,7 +81,7 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 
 	args := []interface{}{qty, 86400}
 
-	res, err := utils.EvalShaWithFallback(ctx, r.rdb, r.scriptSHA, r.scriptBody, keys, args...).Int()
+	res, err := utils.EvalShaWithFallback(ctx, r.rdb, r.buyScriptSHA, r.buyScriptBody, keys, args...).Int()
 	if err != nil {
 		return fmt.Errorf("failed to execute buy ticket script for event %s in redis: %w", eventID, err)
 	}
@@ -95,4 +104,27 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 	default:
 		return fmt.Errorf("unexpected lua response code %d: %w", res, models.ErrInternal)
 	}
+}
+
+func (r *RedisRepo) RollbackPurchase(ctx context.Context, eventID, userID, reqID string, qty int) error {
+	keys := []string{
+		fmt.Sprintf("ticket:stock:%s", eventID),
+		fmt.Sprintf("ticket:history:%s:%s", eventID, userID),
+		fmt.Sprintf("ticket:req_processed:%s:%s:%s", eventID, userID, reqID),
+	}
+
+	args := []interface{}{qty}
+
+	res, err := utils.EvalShaWithFallback(ctx, r.rdb, r.rollbackScriptSHA, r.rollbackScriptBody, keys, args...).Int()
+	if err != nil {
+		return fmt.Errorf("failed to execute rollback script for event %s: %w", eventID, err)
+	}
+	if res == 0 {
+		log.Printf("[REPO][WARN] Rollback skipped, request not found | event_id=%s | user_id=%s | req_id=%s | qty=%d", eventID, userID, reqID, qty)
+		return nil
+	}
+
+	log.Printf("[REPO][INFO] Redis rollback successful | event_id=%s | user_id=%s | req_id=%s | qty=%d", eventID, userID, reqID, qty)
+
+	return nil
 }
