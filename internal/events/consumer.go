@@ -1,10 +1,14 @@
 package events
 
 import (
+	"Ticketing-System/internal/models"
 	"Ticketing-System/internal/repositories"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/segmentio/kafka-go"
 )
@@ -39,6 +43,45 @@ func NewKafkaConsumer(ctx context.Context, brokers []string, topic, groupID stri
 		reader: r,
 		pgRepo: pgRepo,
 	}, nil
+}
+
+func (c *KafkaConsumer) ConsumeOrderEvent(ctx context.Context) error {
+	for {
+		msg, err := c.reader.FetchMessage(ctx)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+				log.Println("[KAFKA][INFO] Context cancelled | action=stop_consumer")
+				return nil
+			}
+			return fmt.Errorf("failed to read message from kafka: %w", err)
+		}
+
+		var event models.OrderEvent
+		if err := json.Unmarshal(msg.Value, &event); err != nil {
+			log.Printf("[KAFKA][ERROR] Failed to unmarshal event | key=%s | err=%v", string(msg.Key), err)
+			c.reader.CommitMessages(ctx, msg)
+			continue
+		}
+
+		log.Printf("[KAFKA][INFO] Consumed OrderEvent | event_id=%s | req_id=%s", event.EventID, event.RequestID)
+
+		event.Status = "Success"
+
+		dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err = c.pgRepo.InsertOrderIfNotExists(dbCtx, event)
+		dbCancel()
+
+		if err != nil {
+			log.Printf("[KAFKA][ERROR] Failed to insert order to database | req_id=%s | err=%v", event.RequestID, err)
+			continue
+		}
+
+		commitCtx, commitCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := c.reader.CommitMessages(commitCtx, msg); err != nil {
+			log.Printf("[KAFKA][ERROR] Failed to commit message | req_id=%s | err=%v", event.RequestID, err)
+		}
+		commitCancel()
+	}
 }
 
 func (c *KafkaConsumer) Close() error {
