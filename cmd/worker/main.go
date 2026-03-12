@@ -58,8 +58,10 @@ func run() error {
 	go func() {
 		defer wg.Done()
 		log.Println("[WORKER][INFO] Worker started | status=running")
-		<-workerCtx.Done()
-		time.Sleep(2 * time.Second)
+		if err := kafkaConsumer.ConsumeOrderEvent(workerCtx); err != nil {
+			log.Printf("[WORKER][ERROR] Consumer loop crashed | err=%v", err)
+			workerErrChan <- err
+		}
 	}()
 
 	signalCtx, signalCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
