@@ -29,7 +29,7 @@ func autoMigrate(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-func ConnectPostgres(ctx context.Context, addr, user, password, dbname string) (*sql.DB, error) {
+func ConnectPostgres(ctx context.Context, addr, user, password, dbname string, maxOpen, maxIdle int, maxLifetime time.Duration) (*sql.DB, error) {
 	dsn := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", user, password, addr, dbname)
 
 	db, err := sql.Open("postgres", dsn)
@@ -37,9 +37,9 @@ func ConnectPostgres(ctx context.Context, addr, user, password, dbname string) (
 		return nil, fmt.Errorf("failed to open postgres connection: %w", err)
 	}
 
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(10)
-	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetMaxOpenConns(maxOpen)
+	db.SetMaxIdleConns(maxIdle)
+	db.SetConnMaxLifetime(maxLifetime)
 
 	if err := db.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("postgres ping failed at %s: %w", addr, err)
