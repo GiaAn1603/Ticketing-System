@@ -17,9 +17,9 @@ type KafkaProducer struct {
 	writer *kafka.Writer
 }
 
-func ensureTopicExists(brokers []string, topic string) error {
+func ensureTopicExists(brokers []string, topic string, partitions, replicationFactor int, timeout time.Duration) error {
 	dialer := &kafka.Dialer{
-		Timeout:   10 * time.Second,
+		Timeout:   timeout,
 		DualStack: true,
 	}
 
@@ -29,12 +29,12 @@ func ensureTopicExists(brokers []string, topic string) error {
 	}
 	defer conn.Close()
 
-	partitions, err := conn.ReadPartitions()
+	topicPartitions, err := conn.ReadPartitions()
 	if err != nil {
 		return fmt.Errorf("failed to read partitions from broker at %s: %w", brokers[0], err)
 	}
 
-	for _, p := range partitions {
+	for _, p := range topicPartitions {
 		if p.Topic == topic {
 			log.Printf("[KAFKA][INFO] Topic already exists | topic=%s", topic)
 			return nil
@@ -55,8 +55,8 @@ func ensureTopicExists(brokers []string, topic string) error {
 
 	topicConfig := kafka.TopicConfig{
 		Topic:             topic,
-		NumPartitions:     3,
-		ReplicationFactor: 1,
+		NumPartitions:     partitions,
+		ReplicationFactor: replicationFactor,
 	}
 
 	if err := controllerConn.CreateTopics(topicConfig); err != nil {
@@ -68,8 +68,8 @@ func ensureTopicExists(brokers []string, topic string) error {
 	return nil
 }
 
-func NewKafkaProducer(ctx context.Context, brokers []string, topic string) (*KafkaProducer, error) {
-	if err := ensureTopicExists(brokers, topic); err != nil {
+func NewKafkaProducer(ctx context.Context, brokers []string, topic string, partitions, replFactor, batchSize int, batchTimeout, kafkaTimeout time.Duration) (*KafkaProducer, error) {
+	if err := ensureTopicExists(brokers, topic, partitions, replFactor, kafkaTimeout); err != nil {
 		return nil, fmt.Errorf("failed to set up kafka brokers %v for topic %s: %w", brokers, topic, err)
 	}
 
@@ -78,11 +78,11 @@ func NewKafkaProducer(ctx context.Context, brokers []string, topic string) (*Kaf
 		Topic:                  topic,
 		Balancer:               &kafka.Hash{},
 		AllowAutoTopicCreation: false,
-		BatchSize:              100,
-		BatchTimeout:           10 * time.Millisecond,
+		BatchSize:              batchSize,
+		BatchTimeout:           batchTimeout,
 		RequiredAcks:           kafka.RequireAll,
-		WriteTimeout:           5 * time.Second,
-		ReadTimeout:            5 * time.Second,
+		WriteTimeout:           kafkaTimeout,
+		ReadTimeout:            kafkaTimeout,
 	}
 
 	log.Printf("[KAFKA][INFO] Warming up connection | topic=%s", topic)

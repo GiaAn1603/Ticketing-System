@@ -12,16 +12,24 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 )
 
 func run() error {
 	cfg := config.LoadConfig()
 
-	startupCtx, startupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	startupCtx, startupCancel := context.WithTimeout(context.Background(), cfg.ServerStartupTimeout)
 	defer startupCancel()
 
-	pgDB, err := infrastructure.ConnectPostgres(startupCtx, cfg.PostgresAddr, cfg.PostgresUser, cfg.PostgresPassword, cfg.PostgresDB)
+	pgDB, err := infrastructure.ConnectPostgres(
+		startupCtx,
+		cfg.PostgresAddr,
+		cfg.PostgresUser,
+		cfg.PostgresPassword,
+		cfg.PostgresDB,
+		cfg.DBMaxOpenConns,
+		cfg.DBMaxIdleConns,
+		cfg.DBConnMaxLifetime,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to connect postgres: %w", err)
 	}
@@ -35,9 +43,17 @@ func run() error {
 	pgRepo := repositories.NewPostgresRepo(pgDB)
 
 	kafkaBrokers := []string{cfg.KafkaAddr}
-	kafkaTopic := "orders"
-	kafkaGroupID := "ticket_worker_group"
-	kafkaConsumer, err := events.NewKafkaConsumer(startupCtx, kafkaBrokers, kafkaTopic, kafkaGroupID, pgRepo)
+	kafkaConsumer, err := events.NewKafkaConsumer(
+		startupCtx,
+		kafkaBrokers,
+		cfg.KafkaTopicOrders,
+		cfg.KafkaGroupID,
+		pgRepo,
+		cfg.KafkaConsumerMinBytes,
+		cfg.KafkaConsumerMaxBytes,
+		cfg.DBTimeout,
+		cfg.KafkaCommitTimeout,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to init kafka consumer: %w", err)
 	}
@@ -76,7 +92,7 @@ func run() error {
 
 	log.Println("[WORKER][INFO] Shutting down worker | status=in_progress")
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.ServerShutdownTimeout)
 	defer shutdownCancel()
 
 	workerCancel()

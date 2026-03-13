@@ -16,7 +16,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,7 +23,7 @@ import (
 func run() error {
 	cfg := config.LoadConfig()
 
-	startupCtx, startupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	startupCtx, startupCancel := context.WithTimeout(context.Background(), cfg.ServerStartupTimeout)
 	defer startupCancel()
 
 	rdb, err := infrastructure.ConnectRedis(startupCtx, cfg.RedisAddr)
@@ -39,8 +38,16 @@ func run() error {
 	}()
 
 	kafkaBrokers := []string{cfg.KafkaAddr}
-	kafkaTopic := "orders"
-	kafkaProducer, err := events.NewKafkaProducer(startupCtx, kafkaBrokers, kafkaTopic)
+	kafkaProducer, err := events.NewKafkaProducer(
+		startupCtx,
+		kafkaBrokers,
+		cfg.KafkaTopicOrders,
+		cfg.KafkaNumPartitions,
+		cfg.KafkaReplicationFactor,
+		cfg.KafkaProducerBatchSize,
+		cfg.KafkaProducerBatchTimeout,
+		cfg.KafkaTimeout,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to init kafka producer: %w", err)
 	}
@@ -51,17 +58,17 @@ func run() error {
 		}
 	}()
 
-	rateLimiter, err := middlewares.NewRateLimiter(startupCtx, rdb, 10, 5, 500*time.Millisecond)
+	rateLimiter, err := middlewares.NewRateLimiter(startupCtx, rdb, cfg.RateLimitCapacity, cfg.RateLimitRate, cfg.RateLimitTimeout)
 	if err != nil {
 		return fmt.Errorf("failed to init rate limiter: %w", err)
 	}
 
-	redisRepo, err := repositories.NewRedisRepo(startupCtx, rdb)
+	redisRepo, err := repositories.NewRedisRepo(startupCtx, rdb, cfg.HistoryTTLSeconds)
 	if err != nil {
 		return fmt.Errorf("failed to init redis repo: %w", err)
 	}
 
-	ticketService := services.NewTicketService(redisRepo, kafkaProducer)
+	ticketService := services.NewTicketService(redisRepo, kafkaProducer, cfg.RedisTimeout)
 	ticketHandler := handlers.NewTicketHandler(ticketService)
 
 	gin.SetMode(gin.ReleaseMode)
@@ -81,9 +88,9 @@ func run() error {
 	srv := &http.Server{
 		Addr:         cfg.ServerPort,
 		Handler:      r,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  15 * time.Second,
+		ReadTimeout:  cfg.ServerReadTimeout,
+		WriteTimeout: cfg.ServerWriteTimeout,
+		IdleTimeout:  cfg.ServerIdleTimeout,
 	}
 
 	srvErrChan := make(chan error, 1)
@@ -108,7 +115,7 @@ func run() error {
 
 	log.Println("[MAIN][INFO] Shutting down server | status=in_progress")
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.ServerShutdownTimeout)
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
