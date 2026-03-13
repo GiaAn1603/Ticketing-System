@@ -15,17 +15,19 @@ import (
 )
 
 type KafkaConsumer struct {
-	reader *kafka.Reader
-	pgRepo *repositories.PostgresRepo
+	reader        *kafka.Reader
+	pgRepo        *repositories.PostgresRepo
+	dbTimeout     time.Duration
+	commitTimeout time.Duration
 }
 
-func NewKafkaConsumer(ctx context.Context, brokers []string, topic, groupID string, pgRepo *repositories.PostgresRepo) (*KafkaConsumer, error) {
+func NewKafkaConsumer(ctx context.Context, brokers []string, topic, groupID string, pgRepo *repositories.PostgresRepo, minBytes, maxBytes int, dbTimeout, commitTimeout time.Duration) (*KafkaConsumer, error) {
 	r := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     brokers,
 		Topic:       topic,
 		GroupID:     groupID,
-		MinBytes:    10e3,
-		MaxBytes:    10e6,
+		MinBytes:    minBytes,
+		MaxBytes:    maxBytes,
 		StartOffset: kafka.FirstOffset,
 	})
 
@@ -41,8 +43,10 @@ func NewKafkaConsumer(ctx context.Context, brokers []string, topic, groupID stri
 	log.Printf("[KAFKA][INFO] Consumer initialized | brokers=%v | topic=%s | group_id=%s", brokers, topic, groupID)
 
 	return &KafkaConsumer{
-		reader: r,
-		pgRepo: pgRepo,
+		reader:        r,
+		pgRepo:        pgRepo,
+		dbTimeout:     dbTimeout,
+		commitTimeout: commitTimeout,
 	}, nil
 }
 
@@ -68,7 +72,7 @@ func (c *KafkaConsumer) ConsumeOrderEvent(ctx context.Context) error {
 
 		event.Status = "Success"
 
-		dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		dbCtx, dbCancel := context.WithTimeout(context.Background(), c.dbTimeout)
 		err = c.pgRepo.CreateOrder(dbCtx, event)
 		dbCancel()
 
@@ -77,7 +81,7 @@ func (c *KafkaConsumer) ConsumeOrderEvent(ctx context.Context) error {
 			continue
 		}
 
-		commitCtx, commitCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		commitCtx, commitCancel := context.WithTimeout(context.Background(), c.commitTimeout)
 		if err := c.reader.CommitMessages(commitCtx, msg); err != nil {
 			log.Printf("[KAFKA][ERROR] Failed to commit message | req_id=%s | err=%v", event.RequestID, err)
 		}
