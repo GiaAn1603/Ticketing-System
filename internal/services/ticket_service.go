@@ -11,14 +11,16 @@ import (
 )
 
 type TicketService struct {
-	redisRepo *repositories.RedisRepo
-	producer  *events.KafkaProducer
+	redisRepo       *repositories.RedisRepo
+	producer        *events.KafkaProducer
+	rollbackTimeout time.Duration
 }
 
-func NewTicketService(redisRepo *repositories.RedisRepo, producer *events.KafkaProducer) *TicketService {
+func NewTicketService(redisRepo *repositories.RedisRepo, producer *events.KafkaProducer, rollbackTimeout time.Duration) *TicketService {
 	return &TicketService{
-		redisRepo: redisRepo,
-		producer:  producer,
+		redisRepo:       redisRepo,
+		producer:        producer,
+		rollbackTimeout: rollbackTimeout,
 	}
 }
 
@@ -51,7 +53,7 @@ func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, re
 	if err := s.producer.PublishOrderEvent(ctx, event); err != nil {
 		log.Printf("[SERVICE][ERROR] Kafka publish failed, initiating rollback | event_id=%s | user_id=%s | req_id=%s | qty=%d | err=%v", eventID, userID, reqID, qty, err)
 
-		rollbackCtx, rollbackCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		rollbackCtx, rollbackCancel := context.WithTimeout(context.Background(), s.rollbackTimeout)
 		defer rollbackCancel()
 
 		if rbErr := s.redisRepo.RollbackPurchase(rollbackCtx, eventID, userID, reqID, qty); rbErr != nil {

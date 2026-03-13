@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -15,6 +16,35 @@ type Config struct {
 	PostgresUser     string
 	PostgresPassword string
 	PostgresDB       string
+
+	ServerStartupTimeout  time.Duration
+	ServerReadTimeout     time.Duration
+	ServerWriteTimeout    time.Duration
+	ServerIdleTimeout     time.Duration
+	ServerShutdownTimeout time.Duration
+
+	HistoryTTLSeconds int
+	RedisTimeout      time.Duration
+
+	DBMaxOpenConns    int
+	DBMaxIdleConns    int
+	DBConnMaxLifetime time.Duration
+	DBTimeout         time.Duration
+
+	KafkaTopicOrders          string
+	KafkaGroupID              string
+	KafkaNumPartitions        int
+	KafkaReplicationFactor    int
+	KafkaProducerBatchSize    int
+	KafkaProducerBatchTimeout time.Duration
+	KafkaConsumerMinBytes     int
+	KafkaConsumerMaxBytes     int
+	KafkaTimeout              time.Duration
+	KafkaCommitTimeout        time.Duration
+
+	RateLimitCapacity int
+	RateLimitRate     int
+	RateLimitTimeout  time.Duration
 }
 
 func getEnv(key, fallback string) string {
@@ -40,6 +70,35 @@ func LoadConfig() *Config {
 		PostgresUser:     os.Getenv("POSTGRES_USER"),
 		PostgresPassword: os.Getenv("POSTGRES_PASSWORD"),
 		PostgresDB:       getEnv("POSTGRES_DB", "ticket_db"),
+
+		ServerStartupTimeout:  ServerStartupTimeout,
+		ServerReadTimeout:     ServerReadTimeout,
+		ServerWriteTimeout:    ServerWriteTimeout,
+		ServerIdleTimeout:     ServerIdleTimeout,
+		ServerShutdownTimeout: ServerShutdownTimeout,
+
+		HistoryTTLSeconds: HistoryTTLSeconds,
+		RedisTimeout:      RedisTimeout,
+
+		DBMaxOpenConns:    DBMaxOpenConns,
+		DBMaxIdleConns:    DBMaxIdleConns,
+		DBConnMaxLifetime: DBConnMaxLifetime,
+		DBTimeout:         DBTimeout,
+
+		KafkaTopicOrders:          KafkaTopicOrders,
+		KafkaGroupID:              KafkaGroupID,
+		KafkaNumPartitions:        KafkaNumPartitions,
+		KafkaReplicationFactor:    KafkaReplicationFactor,
+		KafkaProducerBatchSize:    KafkaProducerBatchSize,
+		KafkaProducerBatchTimeout: KafkaProducerBatchTimeout,
+		KafkaConsumerMinBytes:     KafkaConsumerMinBytes,
+		KafkaConsumerMaxBytes:     KafkaConsumerMaxBytes,
+		KafkaTimeout:              KafkaTimeout,
+		KafkaCommitTimeout:        KafkaCommitTimeout,
+
+		RateLimitCapacity: RateLimitCapacity,
+		RateLimitRate:     RateLimitRate,
+		RateLimitTimeout:  RateLimitTimeout,
 	}
 
 	log.Printf("[CONFIG][INFO] Config loaded | port=%s | redis_addr=%s | kafka_addr=%s | pg_addr=%s", cfg.ServerPort, cfg.RedisAddr, cfg.KafkaAddr, cfg.PostgresAddr)
