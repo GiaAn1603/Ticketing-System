@@ -26,9 +26,10 @@ type RedisRepo struct {
 	buyScriptBody      string
 	rollbackScriptSHA  string
 	rollbackScriptBody string
+	historyTTL         int
 }
 
-func NewRedisRepo(ctx context.Context, rdb *redis.Client) (*RedisRepo, error) {
+func NewRedisRepo(ctx context.Context, rdb *redis.Client, ttl int) (*RedisRepo, error) {
 	buySHA, err := rdb.ScriptLoad(ctx, scripts.BuyTicketScript).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load buy_ticket lua script: %w", err)
@@ -47,6 +48,7 @@ func NewRedisRepo(ctx context.Context, rdb *redis.Client) (*RedisRepo, error) {
 		buyScriptBody:      scripts.BuyTicketScript,
 		rollbackScriptSHA:  rollbackSHA,
 		rollbackScriptBody: scripts.RollbackTicketScript,
+		historyTTL:         ttl,
 	}, nil
 }
 
@@ -79,7 +81,7 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 		fmt.Sprintf("ticket:req_processed:%s:%s:%s", eventID, userID, reqID),
 	}
 
-	args := []interface{}{qty, 86400}
+	args := []interface{}{qty, r.historyTTL}
 
 	res, err := utils.EvalShaWithFallback(ctx, r.rdb, r.buyScriptSHA, r.buyScriptBody, keys, args...).Int()
 	if err != nil {
