@@ -4,19 +4,26 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
 
 	_ "github.com/lib/pq"
+
+	"Ticketing-System/internal/infrastructure/observability"
 )
 
-func autoMigrate(ctx context.Context, db *sql.DB) error {
+func autoMigrate(ctx context.Context, db *sql.DB, logger *slog.Logger) error {
 	schemaPath := filepath.Join("migrations", "init_schema.sql")
 	schemaBytes, err := os.ReadFile(schemaPath)
 	if err != nil {
-		log.Printf("[INFRA][WARN] Could not find schema file at %s | action=skip_migration | err=%v", schemaPath, err)
+		logger.Warn(
+			"Schema file found failed",
+			"path", schemaPath,
+			observability.KeyError, err.Error(),
+		)
+
 		return nil
 	}
 
@@ -24,13 +31,15 @@ func autoMigrate(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("failed to execute schema script: %w", err)
 	}
 
-	log.Println("[INFRA][INFO] Database schema verified/initialized automatically | action=auto_migrate")
+	logger.Info("Database schema initialized successfully")
 
 	return nil
 }
 
-func ConnectPostgres(ctx context.Context, addr, user, password, dbname string, maxOpen, maxIdle int, maxLifetime time.Duration) (*sql.DB, error) {
-	dsn := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", user, password, addr, dbname)
+func ConnectPostgres(ctx context.Context, addr, user, password, dbName string, maxOpen, maxIdle int, maxLifetime time.Duration) (*sql.DB, error) {
+	logger := observability.GetLogger("INFRA_POSTGRES")
+
+	dsn := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", user, password, addr, dbName)
 
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
@@ -45,9 +54,13 @@ func ConnectPostgres(ctx context.Context, addr, user, password, dbname string, m
 		return nil, fmt.Errorf("postgres ping failed at %s: %w", addr, err)
 	}
 
-	log.Printf("[INFRA][INFO] Connected to Postgres successfully | addr=%s | db=%s", addr, dbname)
+	logger.Info(
+		"Postgres connected successfully",
+		"addr", addr,
+		"db_name", dbName,
+	)
 
-	if err := autoMigrate(ctx, db); err != nil {
+	if err := autoMigrate(ctx, db, logger); err != nil {
 		return nil, fmt.Errorf("failed to run auto migration: %w", err)
 	}
 

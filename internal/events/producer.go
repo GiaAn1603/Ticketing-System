@@ -4,17 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/segmentio/kafka-go"
 
+	"Ticketing-System/internal/infrastructure/observability"
 	"Ticketing-System/internal/models"
 	"Ticketing-System/internal/utils"
 )
 
 type KafkaProducer struct {
 	writer *kafka.Writer
+	log    *slog.Logger
 }
 
 func NewKafkaProducer(
@@ -24,7 +26,9 @@ func NewKafkaProducer(
 	partitions, replFactor, batchSize int,
 	batchTimeout, kafkaTimeout time.Duration,
 ) (*KafkaProducer, error) {
-	if err := utils.EnsureTopicExists(brokers, topic, partitions, replFactor, kafkaTimeout); err != nil {
+	logger := observability.GetLogger("KAFKA_PRODUCER")
+
+	if err := utils.EnsureTopicExists(brokers, topic, partitions, replFactor, kafkaTimeout, logger); err != nil {
 		return nil, fmt.Errorf("failed to set up kafka brokers %v for topic %s: %w", brokers, topic, err)
 	}
 
@@ -40,19 +44,33 @@ func NewKafkaProducer(
 		ReadTimeout:            kafkaTimeout,
 	}
 
-	log.Printf("[KAFKA][INFO] Warming up connection | topic=%s", topic)
+	logger.Info(
+		"Connection warming up",
+		"topic", topic,
+	)
 
 	if conn, err := kafka.DialLeader(ctx, "tcp", brokers[0], topic, 0); err != nil {
-		log.Printf("[KAFKA][WARN] Warm-up connection failed | err=%v", err)
+		logger.Warn(
+			"Warm-up connection failed",
+			observability.KeyError, err.Error(),
+		)
 	} else {
 		conn.Close()
-		log.Println("[KAFKA][INFO] Warm-up connection successful")
+
+		logger.Info(
+			"Warm-up connection completed successfully",
+		)
 	}
 
-	log.Printf("[KAFKA][INFO] Producer initialized | brokers=%v | topic=%s", brokers, topic)
+	logger.Info(
+		"Producer initialized successfully",
+		"brokers", brokers,
+		"topic", topic,
+	)
 
 	return &KafkaProducer{
 		writer: w,
+		log:    logger,
 	}, nil
 }
 
@@ -72,7 +90,14 @@ func (p *KafkaProducer) PublishOrderEvent(ctx context.Context, event models.Orde
 		return fmt.Errorf("failed to write message to kafka for request %s: %w", event.RequestID, err)
 	}
 
-	log.Printf("[KAFKA][INFO] Published OrderEvent | event_id=%s | user_id=%s | req_id=%s | qty=%d", event.EventID, event.UserID, event.RequestID, event.Quantity)
+	p.log.Debug(
+		"OrderEvent published successfully",
+		"event_id", event.EventID,
+		"user_id", event.UserID,
+		"request_id", event.RequestID,
+		"quantity", event.Quantity,
+		"order_status", event.Status,
+	)
 
 	return nil
 }
