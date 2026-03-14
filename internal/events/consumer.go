@@ -12,6 +12,7 @@ import (
 
 	"Ticketing-System/internal/models"
 	"Ticketing-System/internal/repositories"
+	"Ticketing-System/internal/utils"
 )
 
 type KafkaConsumer struct {
@@ -21,7 +22,19 @@ type KafkaConsumer struct {
 	commitTimeout time.Duration
 }
 
-func NewKafkaConsumer(ctx context.Context, brokers []string, topic, groupID string, pgRepo *repositories.PostgresRepo, minBytes, maxBytes int, dbTimeout, commitTimeout time.Duration) (*KafkaConsumer, error) {
+func NewKafkaConsumer(
+	ctx context.Context,
+	brokers []string,
+	topic, groupID string,
+	partitions, replFactor int,
+	pgRepo *repositories.PostgresRepo,
+	minBytes, maxBytes int,
+	kafkaTimeout, dbTimeout, commitTimeout time.Duration,
+) (*KafkaConsumer, error) {
+	if err := utils.EnsureTopicExists(brokers, topic, partitions, replFactor, kafkaTimeout); err != nil {
+		return nil, fmt.Errorf("failed to set up kafka brokers %v for topic %s: %w", brokers, topic, err)
+	}
+
 	r := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     brokers,
 		Topic:       topic,

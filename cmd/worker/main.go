@@ -49,9 +49,12 @@ func run() error {
 		kafkaBrokers,
 		cfg.KafkaTopicOrders,
 		cfg.KafkaGroupID,
+		cfg.KafkaNumPartitions,
+		cfg.KafkaReplicationFactor,
 		pgRepo,
 		cfg.KafkaConsumerMinBytes,
 		cfg.KafkaConsumerMaxBytes,
+		cfg.KafkaTimeout,
 		cfg.DBTimeout,
 		cfg.KafkaCommitTimeout,
 	)
