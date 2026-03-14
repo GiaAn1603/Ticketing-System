@@ -1,12 +1,13 @@
 package repositories
 
 import (
+	"Ticketing-System/internal/infrastructure"
 	"Ticketing-System/internal/models"
 	"Ticketing-System/internal/utils"
 	"Ticketing-System/scripts"
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -27,9 +28,12 @@ type RedisRepo struct {
 	rollbackScriptSHA  string
 	rollbackScriptBody string
 	historyTTL         int
+	log                *slog.Logger
 }
 
 func NewRedisRepo(ctx context.Context, rdb *redis.Client, ttl int) (*RedisRepo, error) {
+	logger := infrastructure.GetLogger("REDIS_REPO")
+
 	buySHA, err := rdb.ScriptLoad(ctx, scripts.BuyTicketScript).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load buy_ticket lua script: %w", err)
@@ -40,7 +44,11 @@ func NewRedisRepo(ctx context.Context, rdb *redis.Client, ttl int) (*RedisRepo, 
 		return nil, fmt.Errorf("failed to load rollback_ticket lua script: %w", err)
 	}
 
-	log.Printf("[REPO][INFO] Lua script loaded successfully | buy_sha=%s | rollback_sha=%s", buySHA, rollbackSHA)
+	logger.Info(
+		"Lua script loaded successfully",
+		"buy_sha", buySHA,
+		"rollback_sha", rollbackSHA,
+	)
 
 	return &RedisRepo{
 		rdb:                rdb,
@@ -49,10 +57,11 @@ func NewRedisRepo(ctx context.Context, rdb *redis.Client, ttl int) (*RedisRepo, 
 		rollbackScriptSHA:  rollbackSHA,
 		rollbackScriptBody: scripts.RollbackTicketScript,
 		historyTTL:         ttl,
+		log:                logger,
 	}, nil
 }
 
-func (r *RedisRepo) InitializeEvent(ctx context.Context, eventID string, stock, limit int) error {
+func (r *RedisRepo) InitializeEvent(ctx context.Context, eventID string, stock, maxLimit int) error {
 	stockKey := fmt.Sprintf("ticket:stock:%s", eventID)
 	limitKey := fmt.Sprintf("ticket:limit:%s", eventID)
 
@@ -64,16 +73,21 @@ func (r *RedisRepo) InitializeEvent(ctx context.Context, eventID string, stock, 
 		return fmt.Errorf("event %s already exists in redis", eventID)
 	}
 
-	if err = r.rdb.Set(ctx, limitKey, limit, 0).Err(); err != nil {
+	if err = r.rdb.Set(ctx, limitKey, maxLimit, 0).Err(); err != nil {
 		return fmt.Errorf("failed to set limit for event %s in redis: %w", eventID, err)
 	}
 
-	log.Printf("[REPO][INFO] Event initialized successfully | event_id=%s | stock=%d | limit=%d", eventID, stock, limit)
+	r.log.Debug(
+		"Event initialized successfully",
+		"event_id", eventID,
+		"stock", stock,
+		"max_limit", maxLimit,
+	)
 
 	return nil
 }
 
-func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID string, qty int) error {
+func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID string, quantity int) error {
 	keys := []string{
 		fmt.Sprintf("ticket:stock:%s", eventID),
 		fmt.Sprintf("ticket:limit:%s", eventID),
@@ -81,16 +95,23 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 		fmt.Sprintf("ticket:req_processed:%s:%s:%s", eventID, userID, reqID),
 	}
 
-	args := []interface{}{qty, r.historyTTL}
+	args := []interface{}{quantity, r.historyTTL}
 
-	res, err := utils.EvalShaWithFallback(ctx, r.rdb, r.buyScriptSHA, r.buyScriptBody, keys, args...).Int()
+	result, err := utils.EvalShaWithFallback(ctx, r.rdb, r.buyScriptSHA, r.buyScriptBody, keys, args...).Int()
 	if err != nil {
 		return fmt.Errorf("failed to execute buy ticket script for event %s in redis: %w", eventID, err)
 	}
 
-	log.Printf("[REPO][INFO] Lua script result | event_id=%s | user_id=%s | req_id=%s | qty=%d | res=%d", eventID, userID, reqID, qty, res)
+	r.log.Debug(
+		"Purchase Lua script executed",
+		"event_id", eventID,
+		"user_id", userID,
+		"request_id", reqID,
+		"quantity", quantity,
+		"result", result,
+	)
 
-	switch res {
+	switch result {
 	case luaSuccess:
 		return nil
 	case luaAlreadyProcessed:
@@ -104,29 +125,40 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 	case luaEventNotFound:
 		return models.ErrEventNotFound
 	default:
-		return fmt.Errorf("unexpected lua response code %d: %w", res, models.ErrInternal)
+		return fmt.Errorf("unexpected lua response code %d: %w", result, models.ErrInternal)
 	}
 }
 
-func (r *RedisRepo) RollbackPurchase(ctx context.Context, eventID, userID, reqID string, qty int) error {
+func (r *RedisRepo) RollbackPurchase(ctx context.Context, eventID, userID, reqID string, quantity int) error {
 	keys := []string{
 		fmt.Sprintf("ticket:stock:%s", eventID),
 		fmt.Sprintf("ticket:history:%s:%s", eventID, userID),
 		fmt.Sprintf("ticket:req_processed:%s:%s:%s", eventID, userID, reqID),
 	}
 
-	args := []interface{}{qty}
+	args := []interface{}{quantity}
 
 	res, err := utils.EvalShaWithFallback(ctx, r.rdb, r.rollbackScriptSHA, r.rollbackScriptBody, keys, args...).Int()
 	if err != nil {
 		return fmt.Errorf("failed to execute rollback script for event %s: %w", eventID, err)
 	}
 	if res == 0 {
-		log.Printf("[REPO][WARN] Rollback skipped, request not found | event_id=%s | user_id=%s | req_id=%s | qty=%d", eventID, userID, reqID, qty)
+		r.log.Debug(
+			"Rollback skipped",
+			"event_id", eventID,
+			"request_id", reqID,
+			"quantity", quantity,
+		)
 		return nil
 	}
 
-	log.Printf("[REPO][INFO] Redis rollback successful | event_id=%s | user_id=%s | req_id=%s | qty=%d", eventID, userID, reqID, qty)
+	r.log.Debug(
+		"Redis rollback completed successfully",
+		"event_id", eventID,
+		"user_id", userID,
+		"request_id", reqID,
+		"quantity", quantity,
+	)
 
 	return nil
 }

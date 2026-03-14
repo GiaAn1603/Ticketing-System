@@ -2,11 +2,12 @@ package services
 
 import (
 	"Ticketing-System/internal/events"
+	"Ticketing-System/internal/infrastructure"
 	"Ticketing-System/internal/models"
 	"Ticketing-System/internal/repositories"
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 )
 
@@ -14,30 +15,45 @@ type TicketService struct {
 	redisRepo       *repositories.RedisRepo
 	producer        *events.KafkaProducer
 	rollbackTimeout time.Duration
+	log             *slog.Logger
 }
 
 func NewTicketService(redisRepo *repositories.RedisRepo, producer *events.KafkaProducer, rollbackTimeout time.Duration) *TicketService {
+	logger := infrastructure.GetLogger("SERVICE")
+
 	return &TicketService{
 		redisRepo:       redisRepo,
 		producer:        producer,
 		rollbackTimeout: rollbackTimeout,
+		log:             logger,
 	}
 }
 
-func (s *TicketService) InitializeEvent(ctx context.Context, eventID string, stock, limit int) error {
-	log.Printf("[SERVICE][INFO] Processing init event | event_id=%s | stock=%d | limit=%d", eventID, stock, limit)
+func (s *TicketService) InitializeEvent(ctx context.Context, eventID string, stock, maxLimit int) error {
+	s.log.Debug(
+		"Init event processing",
+		"event_id", eventID,
+		"stock", stock,
+		"max_limit", maxLimit,
+	)
 
-	if err := s.redisRepo.InitializeEvent(ctx, eventID, stock, limit); err != nil {
+	if err := s.redisRepo.InitializeEvent(ctx, eventID, stock, maxLimit); err != nil {
 		return fmt.Errorf("failed to initialize event %s in redis: %w", eventID, err)
 	}
 
 	return nil
 }
 
-func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, reqID string, qty int) error {
-	log.Printf("[SERVICE][INFO] Processing purchase | event_id=%s | user_id=%s | req_id=%s | qty=%d", eventID, userID, reqID, qty)
+func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, reqID string, quantity int) error {
+	s.log.Debug(
+		"Purchase processing",
+		"event_id", eventID,
+		"user_id", userID,
+		"request_id", reqID,
+		"quantity", quantity,
+	)
 
-	if err := s.redisRepo.PurchaseTicket(ctx, eventID, userID, reqID, qty); err != nil {
+	if err := s.redisRepo.PurchaseTicket(ctx, eventID, userID, reqID, quantity); err != nil {
 		return fmt.Errorf("failed to process purchase for request %s in redis: %w", reqID, err)
 	}
 
@@ -45,19 +61,33 @@ func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, re
 		EventID:   eventID,
 		UserID:    userID,
 		RequestID: reqID,
-		Quantity:  qty,
+		Quantity:  quantity,
 		Status:    "Processing",
 		Timestamp: time.Now(),
 	}
 
 	if err := s.producer.PublishOrderEvent(ctx, event); err != nil {
-		log.Printf("[SERVICE][ERROR] Kafka publish failed, initiating rollback | event_id=%s | user_id=%s | req_id=%s | qty=%d | err=%v", eventID, userID, reqID, qty, err)
+		s.log.Error(
+			"Kafka publish failed",
+			"event_id", eventID,
+			"user_id", userID,
+			"request_id", reqID,
+			"quantity", quantity,
+			infrastructure.KeyError, err.Error(),
+		)
 
 		rollbackCtx, rollbackCancel := context.WithTimeout(context.Background(), s.rollbackTimeout)
 		defer rollbackCancel()
 
-		if rbErr := s.redisRepo.RollbackPurchase(rollbackCtx, eventID, userID, reqID, qty); rbErr != nil {
-			log.Printf("[SERVICE][CRITICAL] Fatal dual-write! Failed to rollback Redis | event_id=%s | user_id=%s | req_id=%s | qty=%d | rollback_err=%v", eventID, userID, reqID, qty, rbErr)
+		if rbErr := s.redisRepo.RollbackPurchase(rollbackCtx, eventID, userID, reqID, quantity); rbErr != nil {
+			s.log.Error(
+				"Dual write rollback to Redis failed",
+				"event_id", eventID,
+				"user_id", userID,
+				"request_id", reqID,
+				"quantity", quantity,
+				infrastructure.KeyError, rbErr.Error(),
+			)
 		}
 
 		return fmt.Errorf("failed to publish event to kafka for request %s: %w", reqID, err)
