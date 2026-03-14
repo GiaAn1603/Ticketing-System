@@ -7,7 +7,7 @@ import (
 	"Ticketing-System/internal/repositories"
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"sync"
@@ -15,6 +15,9 @@ import (
 )
 
 func run() error {
+	infrastructure.InitLogger()
+	logger := infrastructure.GetLogger("WORKER")
+
 	cfg := config.LoadConfig()
 
 	startupCtx, startupCancel := context.WithTimeout(context.Background(), cfg.ServerStartupTimeout)
@@ -34,9 +37,15 @@ func run() error {
 		return fmt.Errorf("failed to connect postgres: %w", err)
 	}
 	defer func() {
-		log.Println("[WORKER][INFO] Closing Postgres connection | action=close_postgres")
+		logger.Info("Postgres connection closing")
+
 		if err := pgDB.Close(); err != nil {
-			log.Printf("[WORKER][WARN] Postgres close error | err=%v", err)
+			logger.Warn(
+				"Postgres close failed",
+				infrastructure.KeyAction, "shutdown",
+				infrastructure.KeyStatus, infrastructure.StatusFailed,
+				infrastructure.KeyError, err.Error(),
+			)
 		}
 	}()
 
@@ -61,9 +70,15 @@ func run() error {
 		return fmt.Errorf("failed to init kafka consumer: %w", err)
 	}
 	defer func() {
-		log.Println("[WORKER][INFO] Closing Kafka connection | action=close_kafka")
+		logger.Info("Kafka connection closing")
+
 		if err := kafkaConsumer.Close(); err != nil {
-			log.Printf("[WORKER][WARN] Kafka close error | err=%v", err)
+			logger.Warn(
+				"Kafka close failed",
+				infrastructure.KeyAction, "shutdown",
+				infrastructure.KeyStatus, infrastructure.StatusFailed,
+				infrastructure.KeyError, err.Error(),
+			)
 		}
 	}()
 
@@ -76,9 +91,17 @@ func run() error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		log.Println("[WORKER][INFO] Worker started | status=running")
+
+		logger.Info("Worker started")
+
 		if err := kafkaConsumer.ConsumeOrderEvent(workerCtx); err != nil {
-			log.Printf("[WORKER][ERROR] Consumer loop crashed | err=%v", err)
+			logger.Error(
+				"Consumer loop crashed",
+				infrastructure.KeyAction, "run_consumer_loop",
+				infrastructure.KeyStatus, infrastructure.StatusFailed,
+				infrastructure.KeyError, err.Error(),
+			)
+
 			workerErrChan <- err
 		}
 	}()
@@ -90,10 +113,13 @@ func run() error {
 	case err := <-workerErrChan:
 		return fmt.Errorf("worker stopped unexpectedly: %w", err)
 	case <-signalCtx.Done():
-		log.Println("[WORKER][INFO] Received shutdown signal | signal=SIGINT/SIGTERM")
+		logger.Info(
+			"Shutdown signal received",
+			"signal", "SIGINT/SIGTERM",
+		)
 	}
 
-	log.Println("[WORKER][INFO] Shutting down worker | status=in_progress")
+	logger.Info("Worker shutdown started")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.ServerShutdownTimeout)
 	defer shutdownCancel()
@@ -112,14 +138,21 @@ func run() error {
 		return fmt.Errorf("worker forced to shutdown: %w", shutdownCtx.Err())
 	}
 
-	log.Println("[WORKER][INFO] Worker exited | status=done")
+	logger.Info("Worker exited")
 
 	return nil
 }
 
 func main() {
 	if err := run(); err != nil {
-		log.Printf("[WORKER][FATAL] Worker startup failed | err=%v", err)
+		slog.Error(
+			"Worker startup failed",
+			"layer", "WORKER",
+			infrastructure.KeyAction, "run_worker",
+			infrastructure.KeyStatus, infrastructure.StatusFailed,
+			infrastructure.KeyError, err.Error(),
+		)
+
 		os.Exit(1)
 	}
 }

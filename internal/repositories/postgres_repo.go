@@ -1,20 +1,25 @@
 package repositories
 
 import (
+	"Ticketing-System/internal/infrastructure"
 	"Ticketing-System/internal/models"
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 )
 
 type PostgresRepo struct {
-	db *sql.DB
+	db  *sql.DB
+	log *slog.Logger
 }
 
 func NewPostgresRepo(db *sql.DB) *PostgresRepo {
+	logger := infrastructure.GetLogger("POSTGRES_REPO")
+
 	return &PostgresRepo{
-		db: db,
+		db:  db,
+		log: logger,
 	}
 }
 
@@ -36,11 +41,25 @@ func (r *PostgresRepo) InsertOrderIfNotExists(ctx context.Context, order models.
 	}
 
 	if rowsAffected == 0 {
-		log.Printf("[REPO][WARN] Order already exists, skipped (Idempotency check) | req_id=%s", order.RequestID)
+		r.log.Debug(
+			"Order already exists",
+			"event_id", order.EventID,
+			"user_id", order.UserID,
+			"request_id", order.RequestID,
+			"quantity", order.Quantity,
+			"order_status", order.Status,
+		)
 		return nil
 	}
 
-	log.Printf("[REPO][INFO] Order saved to database | event_id=%s | user_id=%s | req_id=%s | qty=%d", order.EventID, order.UserID, order.RequestID, order.Quantity)
+	r.log.Debug(
+		"Order saved successfully",
+		"event_id", order.EventID,
+		"user_id", order.UserID,
+		"request_id", order.RequestID,
+		"quantity", order.Quantity,
+		"order_status", order.Status,
+	)
 
 	return nil
 }

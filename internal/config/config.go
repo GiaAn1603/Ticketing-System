@@ -1,7 +1,7 @@
 package config
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"time"
 
@@ -57,9 +57,17 @@ func getEnv(key, fallback string) string {
 
 func LoadConfig() *Config {
 	if err := godotenv.Load(); err != nil {
-		log.Printf("[CONFIG][WARN] Load env file failed | action=use_defaults | err=%v", err)
+		slog.Warn(
+			"Env file load failed",
+			"layer", "CONFIG",
+			"error", err.Error(),
+		)
 	} else {
-		log.Println("[CONFIG][INFO] Load env file success | source=.env")
+		slog.Info(
+			"Env file loaded successfully",
+			"layer", "CONFIG",
+			"path", ".env",
+		)
 	}
 
 	cfg := &Config{
@@ -101,7 +109,14 @@ func LoadConfig() *Config {
 		RateLimitTimeout:  RateLimitTimeout,
 	}
 
-	log.Printf("[CONFIG][INFO] Config loaded | port=%s | redis_addr=%s | kafka_addr=%s | pg_addr=%s", cfg.ServerPort, cfg.RedisAddr, cfg.KafkaAddr, cfg.PostgresAddr)
+	slog.Info(
+		"Config loaded successfully",
+		"layer", "CONFIG",
+		"server_port", cfg.ServerPort,
+		"redis_addr", cfg.RedisAddr,
+		"kafka_addr", cfg.KafkaAddr,
+		"pg_addr", cfg.PostgresAddr,
+	)
 
 	return cfg
 }
