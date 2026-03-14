@@ -1,6 +1,7 @@
 package events
 
 import (
+	"Ticketing-System/internal/infrastructure"
 	"Ticketing-System/internal/models"
 	"Ticketing-System/internal/repositories"
 	"Ticketing-System/internal/utils"
@@ -8,7 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/segmentio/kafka-go"
@@ -19,6 +20,7 @@ type KafkaConsumer struct {
 	pgRepo        *repositories.PostgresRepo
 	dbTimeout     time.Duration
 	commitTimeout time.Duration
+	log           *slog.Logger
 }
 
 func NewKafkaConsumer(
@@ -30,7 +32,9 @@ func NewKafkaConsumer(
 	minBytes, maxBytes int,
 	kafkaTimeout, dbTimeout, commitTimeout time.Duration,
 ) (*KafkaConsumer, error) {
-	if err := utils.EnsureTopicExists(brokers, topic, partitions, replFactor, kafkaTimeout); err != nil {
+	logger := infrastructure.GetLogger("KAFKA_CONSUMER")
+
+	if err := utils.EnsureTopicExists(brokers, topic, partitions, replFactor, kafkaTimeout, logger); err != nil {
 		return nil, fmt.Errorf("failed to set up kafka brokers %v for topic %s: %w", brokers, topic, err)
 	}
 
@@ -43,22 +47,37 @@ func NewKafkaConsumer(
 		StartOffset: kafka.FirstOffset,
 	})
 
-	log.Printf("[KAFKA][INFO] Warming up connection | topic=%s", topic)
+	logger.Info(
+		"Connection warming up",
+		"topic", topic,
+	)
 
 	if conn, err := kafka.DialLeader(ctx, "tcp", brokers[0], topic, 0); err != nil {
-		log.Printf("[KAFKA][WARN] Warm-up connection failed | err=%v", err)
+		logger.Warn(
+			"Warm-up connection failed",
+			"error", err.Error(),
+		)
 	} else {
 		conn.Close()
-		log.Println("[KAFKA][INFO] Warm-up connection successful")
+
+		logger.Info(
+			"Warm-up connection completed successfully",
+		)
 	}
 
-	log.Printf("[KAFKA][INFO] Consumer initialized | brokers=%v | topic=%s | group_id=%s", brokers, topic, groupID)
+	logger.Info(
+		"Consumer initialized successfully",
+		"brokers", brokers,
+		"topic", topic,
+		"group_id", groupID,
+	)
 
 	return &KafkaConsumer{
 		reader:        r,
 		pgRepo:        pgRepo,
 		dbTimeout:     dbTimeout,
 		commitTimeout: commitTimeout,
+		log:           logger,
 	}, nil
 }
 
@@ -67,7 +86,7 @@ func (c *KafkaConsumer) ConsumeOrderEvent(ctx context.Context) error {
 		msg, err := c.reader.FetchMessage(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || ctx.Err() != nil {
-				log.Println("[KAFKA][INFO] Context cancelled | action=stop_consumer")
+				c.log.Info("Context cancelled")
 				return nil
 			}
 			return fmt.Errorf("failed to read message from kafka: %w", err)
@@ -75,12 +94,25 @@ func (c *KafkaConsumer) ConsumeOrderEvent(ctx context.Context) error {
 
 		var event models.OrderEvent
 		if err := json.Unmarshal(msg.Value, &event); err != nil {
-			log.Printf("[KAFKA][ERROR] Failed to unmarshal event | key=%s | err=%v", string(msg.Key), err)
+			c.log.Error(
+				"Event unmarshal failed",
+				infrastructure.KeyAction, "unmarshal_kafka_msg",
+				infrastructure.KeyStatus, infrastructure.StatusFailed,
+				"kafka_key", string(msg.Key),
+				infrastructure.KeyError, err.Error(),
+			)
+
 			c.reader.CommitMessages(ctx, msg)
 			continue
 		}
 
-		log.Printf("[KAFKA][INFO] Consumed OrderEvent | event_id=%s | req_id=%s", event.EventID, event.RequestID)
+		c.log.Info(
+			"OrderEvent consumed successfully",
+			"event_id", event.EventID,
+			"user_id", event.UserID,
+			"request_id", event.RequestID,
+			"quantity", event.Quantity,
+		)
 
 		event.Status = "Success"
 
@@ -89,13 +121,34 @@ func (c *KafkaConsumer) ConsumeOrderEvent(ctx context.Context) error {
 		dbCancel()
 
 		if err != nil {
-			log.Printf("[KAFKA][ERROR] Failed to insert order to database | req_id=%s | err=%v", event.RequestID, err)
+			c.log.Error(
+				"Order insertion failed",
+				infrastructure.KeyAction, "insert_order_db",
+				infrastructure.KeyStatus, infrastructure.StatusFailed,
+				"event_id", event.EventID,
+				"user_id", event.UserID,
+				"request_id", event.RequestID,
+				"quantity", event.Quantity,
+				"order_status", event.Status,
+				infrastructure.KeyError, err.Error(),
+			)
+
 			continue
 		}
 
 		commitCtx, commitCancel := context.WithTimeout(context.Background(), c.commitTimeout)
 		if err := c.reader.CommitMessages(commitCtx, msg); err != nil {
-			log.Printf("[KAFKA][ERROR] Failed to commit message | req_id=%s | err=%v", event.RequestID, err)
+			c.log.Error(
+				"Message commit failed",
+				infrastructure.KeyAction, "commit_kafka_msg",
+				infrastructure.KeyStatus, infrastructure.StatusFailed,
+				"event_id", event.EventID,
+				"user_id", event.UserID,
+				"request_id", event.RequestID,
+				"quantity", event.Quantity,
+				"order_status", event.Status,
+				infrastructure.KeyError, err.Error(),
+			)
 		}
 		commitCancel()
 	}

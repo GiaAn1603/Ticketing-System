@@ -1,10 +1,11 @@
 package handlers
 
 import (
+	"Ticketing-System/internal/infrastructure"
 	"Ticketing-System/internal/models"
 	"Ticketing-System/internal/services"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -13,11 +14,15 @@ import (
 
 type TicketHandler struct {
 	service *services.TicketService
+	log     *slog.Logger
 }
 
 func NewTicketHandler(service *services.TicketService) *TicketHandler {
+	logger := infrastructure.GetLogger("HANDLER")
+
 	return &TicketHandler{
 		service: service,
+		log:     logger,
 	}
 }
 
@@ -25,17 +30,31 @@ func (h *TicketHandler) InitTicket(c *gin.Context) {
 	var req models.InitRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("[HANDLER][WARN] Invalid InitRequest payload | err=%v", err)
+		h.log.Warn(
+			"InitRequest payload validation failed",
+			infrastructure.KeyAction, "init_ticket",
+			infrastructure.KeyStatus, infrastructure.StatusFailed,
+			infrastructure.KeyError, err.Error(),
+		)
 
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status": "fail",
 			"error":  "Invalid request payload",
 		})
+
 		return
 	}
 
 	if err := h.service.InitializeEvent(c.Request.Context(), req.EventID, req.Stock, req.MaxLimit); err != nil {
-		log.Printf("[HANDLER][ERROR] Init event failed | event_id=%s | stock=%d | limit=%d | err=%v", req.EventID, req.Stock, req.MaxLimit, err)
+		h.log.Error(
+			"Event initialization failed",
+			infrastructure.KeyAction, "init_ticket",
+			infrastructure.KeyStatus, infrastructure.StatusFailed,
+			"event_id", req.EventID,
+			"stock", req.Stock,
+			"max_limit", req.MaxLimit,
+			infrastructure.KeyError, err.Error(),
+		)
 
 		if strings.Contains(err.Error(), "failed to set stock in redis") {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -60,7 +79,14 @@ func (h *TicketHandler) InitTicket(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[HANDLER][INFO] Init event successful | event_id=%s | stock=%d | limit=%d", req.EventID, req.Stock, req.MaxLimit)
+	h.log.Info(
+		"Event initialized successfully",
+		infrastructure.KeyAction, "init_ticket",
+		infrastructure.KeyStatus, infrastructure.StatusSuccess,
+		"event_id", req.EventID,
+		"stock", req.Stock,
+		"max_limit", req.MaxLimit,
+	)
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":   "success",
@@ -72,28 +98,52 @@ func (h *TicketHandler) BuyTicket(c *gin.Context) {
 	var req models.BuyRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("[HANDLER][WARN] Invalid BuyRequest payload | err=%v", err)
+		h.log.Warn(
+			"BuyRequest payload validation failed",
+			infrastructure.KeyAction, "buy_ticket",
+			infrastructure.KeyStatus, infrastructure.StatusFailed,
+			infrastructure.KeyError, err.Error(),
+		)
 
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status": "fail",
 			"error":  "Invalid request payload",
 		})
+
 		return
 	}
 
 	reqID := c.GetHeader("X-Request-ID")
 	if reqID == "" {
-		log.Printf("[HANDLER][WARN] Missing X-Request-ID | event_id=%s | user_id=%s | qty=%d", req.EventID, req.UserID, req.Quantity)
+		h.log.Warn(
+			"X-Request-ID header missing",
+			infrastructure.KeyAction, "buy_ticket",
+			infrastructure.KeyStatus, infrastructure.StatusFailed,
+			"event_id", req.EventID,
+			"user_id", req.UserID,
+			"quantity", req.Quantity,
+			infrastructure.KeyError, "missing_request_id_header",
+		)
 
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status": "fail",
 			"error":  "Missing X-Request-ID header",
 		})
+
 		return
 	}
 
 	if err := h.service.ProcessPurchase(c.Request.Context(), req.EventID, req.UserID, reqID, req.Quantity); err != nil {
-		log.Printf("[HANDLER][WARN] Purchase failed | event_id=%s | user_id=%s | req_id=%s | qty=%d | err=%v", req.EventID, req.UserID, reqID, req.Quantity, err)
+		h.log.Warn(
+			"Purchase failed",
+			infrastructure.KeyAction, "buy_ticket",
+			infrastructure.KeyStatus, infrastructure.StatusFailed,
+			"event_id", req.EventID,
+			"user_id", req.UserID,
+			"request_id", reqID,
+			"quantity", req.Quantity,
+			infrastructure.KeyError, err.Error(),
+		)
 
 		switch {
 		case errors.Is(err, models.ErrAlreadyProcessed):
@@ -136,7 +186,15 @@ func (h *TicketHandler) BuyTicket(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[HANDLER][INFO] Purchase successful | event_id=%s | user_id=%s | req_id=%s | qty=%d", req.EventID, req.UserID, reqID, req.Quantity)
+	h.log.Info(
+		"Purchase completed successfully",
+		infrastructure.KeyAction, "buy_ticket",
+		infrastructure.KeyStatus, infrastructure.StatusSuccess,
+		"event_id", req.EventID,
+		"user_id", req.UserID,
+		"request_id", reqID,
+		"quantity", req.Quantity,
+	)
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",

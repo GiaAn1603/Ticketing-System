@@ -3,18 +3,22 @@ package infrastructure
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/redis/go-redis/v9"
 )
 
 func ConnectRedis(ctx context.Context, addr string) (*redis.Client, error) {
+	logger := GetLogger("REDIS_INFRA")
+
 	client := redis.NewClient(&redis.Options{Addr: addr})
 	if err := client.Ping(ctx).Err(); err != nil {
 		return nil, fmt.Errorf("redis ping failed at %s: %w", addr, err)
 	}
 
-	log.Printf("[INFRA][INFO] Connected to Redis successfully | addr=%s", addr)
+	logger.Info(
+		"Redis connected successfully",
+		"addr", addr,
+	)
 
 	return client, nil
 }

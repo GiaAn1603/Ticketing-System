@@ -1,7 +1,7 @@
 package config
 
 import (
-	"log"
+	"Ticketing-System/internal/infrastructure"
 	"os"
 	"time"
 
@@ -56,10 +56,20 @@ func getEnv(key, fallback string) string {
 }
 
 func LoadConfig() *Config {
+	logger := infrastructure.GetLogger("CONFIG")
+
 	if err := godotenv.Load(); err != nil {
-		log.Printf("[CONFIG][WARN] Load env file failed | action=use_defaults | err=%v", err)
+		logger.Warn(
+			"Env file load failed",
+			infrastructure.KeyAction, "load_env",
+			infrastructure.KeyStatus, infrastructure.StatusFailed,
+			infrastructure.KeyError, err.Error(),
+		)
 	} else {
-		log.Println("[CONFIG][INFO] Load env file success | source=.env")
+		logger.Info(
+			"Env file loaded successfully",
+			"path", ".env",
+		)
 	}
 
 	cfg := &Config{
@@ -101,7 +111,13 @@ func LoadConfig() *Config {
 		RateLimitTimeout:  RateLimitTimeout,
 	}
 
-	log.Printf("[CONFIG][INFO] Config loaded | port=%s | redis_addr=%s | kafka_addr=%s | pg_addr=%s", cfg.ServerPort, cfg.RedisAddr, cfg.KafkaAddr, cfg.PostgresAddr)
+	logger.Info(
+		"Config loaded",
+		"server_port", cfg.ServerPort,
+		"redis_addr", cfg.RedisAddr,
+		"kafka_addr", cfg.KafkaAddr,
+		"pg_addr", cfg.PostgresAddr,
+	)
 
 	return cfg
 }
