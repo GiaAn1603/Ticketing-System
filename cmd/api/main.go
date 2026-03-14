@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,6 +22,9 @@ import (
 )
 
 func run() error {
+	infrastructure.InitLogger()
+	logger := infrastructure.GetLogger("MAIN")
+
 	cfg := config.LoadConfig()
 
 	startupCtx, startupCancel := context.WithTimeout(context.Background(), cfg.ServerStartupTimeout)
@@ -32,9 +35,15 @@ func run() error {
 		return fmt.Errorf("failed to connect redis: %w", err)
 	}
 	defer func() {
-		log.Println("[MAIN][INFO] Closing Redis connection | action=close_redis")
+		logger.Info("Redis connection closing")
+
 		if err := rdb.Close(); err != nil {
-			log.Printf("[MAIN][WARN] Redis close error | err=%v", err)
+			logger.Warn(
+				"Redis close failed",
+				infrastructure.KeyAction, "shutdown",
+				infrastructure.KeyStatus, infrastructure.StatusFailed,
+				infrastructure.KeyError, err.Error(),
+			)
 		}
 	}()
 
@@ -53,9 +62,15 @@ func run() error {
 		return fmt.Errorf("failed to init kafka producer: %w", err)
 	}
 	defer func() {
-		log.Println("[MAIN][INFO] Closing Kafka connection | action=close_kafka")
+		logger.Info("Kafka connection closing")
+
 		if err := kafkaProducer.Close(); err != nil {
-			log.Printf("[MAIN][WARN] Kafka close error | err=%v", err)
+			logger.Warn(
+				"Kafka close failed",
+				infrastructure.KeyAction, "shutdown",
+				infrastructure.KeyStatus, infrastructure.StatusFailed,
+				infrastructure.KeyError, err.Error(),
+			)
 		}
 	}()
 
@@ -73,7 +88,8 @@ func run() error {
 	ticketHandler := handlers.NewTicketHandler(ticketService)
 
 	gin.SetMode(gin.ReleaseMode)
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Recovery())
 	r.SetTrustedProxies(nil)
 
 	r.GET("/ping", func(c *gin.Context) {
@@ -97,9 +113,19 @@ func run() error {
 	srvErrChan := make(chan error, 1)
 
 	go func() {
-		log.Printf("[MAIN][INFO] Server started | url=http://localhost%s", cfg.ServerPort)
+		logger.Info(
+			"Server started",
+			"url", fmt.Sprintf("http://localhost%s", cfg.ServerPort),
+		)
+
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("[MAIN][ERROR] HTTP server crashed | err=%v", err)
+			logger.Error(
+				"HTTP server crashed",
+				infrastructure.KeyAction, "run_http_server",
+				infrastructure.KeyStatus, infrastructure.StatusFailed,
+				infrastructure.KeyError, err.Error(),
+			)
+
 			srvErrChan <- err
 		}
 	}()
@@ -111,10 +137,13 @@ func run() error {
 	case err := <-srvErrChan:
 		return fmt.Errorf("server stopped unexpectedly: %w", err)
 	case <-signalCtx.Done():
-		log.Println("[MAIN][INFO] Received shutdown signal | signal=SIGINT/SIGTERM")
+		logger.Info(
+			"Shutdown signal received",
+			"signal", "SIGINT/SIGTERM",
+		)
 	}
 
-	log.Println("[MAIN][INFO] Shutting down server | status=in_progress")
+	logger.Info("Server shutdown started")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.ServerShutdownTimeout)
 	defer shutdownCancel()
@@ -123,14 +152,21 @@ func run() error {
 		return fmt.Errorf("server forced to shutdown: %w", err)
 	}
 
-	log.Println("[MAIN][INFO] Server exited | status=done")
+	logger.Info("Server exited")
 
 	return nil
 }
 
 func main() {
 	if err := run(); err != nil {
-		log.Printf("[MAIN][FATAL] Application startup failed | err=%v", err)
+		slog.Error(
+			"Application startup failed",
+			"layer", "MAIN",
+			infrastructure.KeyAction, "run_application",
+			infrastructure.KeyStatus, infrastructure.StatusFailed,
+			infrastructure.KeyError, err.Error(),
+		)
+
 		os.Exit(1)
 	}
 }

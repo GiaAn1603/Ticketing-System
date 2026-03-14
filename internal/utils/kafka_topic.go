@@ -2,7 +2,7 @@ package utils
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"strconv"
 	"time"
@@ -10,7 +10,7 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-func EnsureTopicExists(brokers []string, topic string, partitions, replicationFactor int, timeout time.Duration) error {
+func EnsureTopicExists(brokers []string, topic string, partitions, replicationFactor int, timeout time.Duration, logger *slog.Logger) error {
 	dialer := &kafka.Dialer{
 		Timeout:   timeout,
 		DualStack: true,
@@ -29,7 +29,11 @@ func EnsureTopicExists(brokers []string, topic string, partitions, replicationFa
 
 	for _, p := range topicPartitions {
 		if p.Topic == topic {
-			log.Printf("[KAFKA][INFO] Topic already exists | topic=%s", topic)
+			logger.Info(
+				"Topic already exists",
+				"topic", topic,
+			)
+
 			return nil
 		}
 	}
@@ -56,7 +60,11 @@ func EnsureTopicExists(brokers []string, topic string, partitions, replicationFa
 		return fmt.Errorf("failed to create topic %s via controller at %s: %w", topic, controllerAddr, err)
 	}
 
-	log.Printf("[KAFKA][INFO] Topic created successfully | topic=%s | partitions=%d", topic, topicConfig.NumPartitions)
+	logger.Info(
+		"Topic created successfully",
+		"topic", topic,
+		"num_partitions", topicConfig.NumPartitions,
+	)
 
 	return nil
 }

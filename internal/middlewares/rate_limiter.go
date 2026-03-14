@@ -3,13 +3,14 @@ package middlewares
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 
+	"Ticketing-System/internal/infrastructure"
 	"Ticketing-System/internal/utils"
 	"Ticketing-System/scripts"
 )
@@ -27,15 +28,21 @@ type RateLimiter struct {
 	timeout    time.Duration
 	scriptSHA  string
 	scriptBody string
+	log        *slog.Logger
 }
 
 func NewRateLimiter(ctx context.Context, rdb *redis.Client, capacity, rate int, timeout time.Duration) (*RateLimiter, error) {
+	logger := infrastructure.GetLogger("MIDDLEWARE_RATE_LIMIT")
+
 	sha, err := rdb.ScriptLoad(ctx, scripts.RateLimitScript).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load rate_limit lua script: %w", err)
 	}
 
-	log.Printf("[MIDDLEWARE][INFO] Lua script loaded successfully | sha=%s", sha)
+	logger.Info(
+		"Lua script loaded successfully",
+		"sha", sha,
+	)
 
 	return &RateLimiter{
 		rdb:        rdb,
@@ -44,6 +51,7 @@ func NewRateLimiter(ctx context.Context, rdb *redis.Client, capacity, rate int, 
 		timeout:    timeout,
 		scriptSHA:  sha,
 		scriptBody: scripts.RateLimitScript,
+		log:        logger,
 	}, nil
 }
 
@@ -57,23 +65,32 @@ func (rl *RateLimiter) Limit(c *gin.Context) {
 
 	rawResult, err := utils.EvalShaWithFallback(ctx, rl.rdb, rl.scriptSHA, rl.scriptBody, keys, args...).Result()
 	if err != nil {
-		log.Printf("[MIDDLEWARE][ERROR] Lua script execution failed | client_ip=%s | err=%v", clientIP, err)
+		rl.log.Error(
+			"Lua script execution failed",
+			"client_ip", clientIP,
+			infrastructure.KeyError, err.Error(),
+		)
 
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status": "error",
 			"error":  "Internal server error",
 		})
+
 		return
 	}
 
 	results, isArray := rawResult.([]interface{})
 	if !isArray || len(results) < 2 {
-		log.Printf("[MIDDLEWARE][ERROR] Invalid Lua response format | client_ip=%s", clientIP)
+		rl.log.Error(
+			"Lua response format validation failed",
+			"client_ip", clientIP,
+		)
 
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status": "error",
 			"error":  "Internal server error",
 		})
+
 		return
 	}
 
@@ -81,12 +98,16 @@ func (rl *RateLimiter) Limit(c *gin.Context) {
 	remainingTokens, isValidTokens := results[1].(int64)
 
 	if !isValidStatus || !isValidTokens {
-		log.Printf("[MIDDLEWARE][ERROR] Invalid Lua response types | client_ip=%s", clientIP)
+		rl.log.Error(
+			"Lua response types validation failed",
+			"client_ip", clientIP,
+		)
 
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status": "error",
 			"error":  "Internal server error",
 		})
+
 		return
 	}
 
@@ -97,21 +118,31 @@ func (rl *RateLimiter) Limit(c *gin.Context) {
 	case luaSuccess:
 		c.Next()
 	case luaInvalidInput:
-		log.Printf("[MIDDLEWARE][ERROR] Invalid Lua parameters | client_ip=%s", clientIP)
+		rl.log.Error(
+			"Lua parameters validation failed",
+			"client_ip", clientIP,
+		)
 
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status": "error",
 			"error":  "Internal server error",
 		})
 	case luaLimitExceeded:
-		log.Printf("[MIDDLEWARE][WARN] Rate limit exceeded | client_ip=%s", clientIP)
+		rl.log.Warn(
+			"Rate limit exceeded",
+			"client_ip", clientIP,
+		)
 
 		c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 			"status": "fail",
 			"error":  "Too many requests, please try again later",
 		})
 	default:
-		log.Printf("[MIDDLEWARE][ERROR] Unknown Lua result | client_ip=%s | code=%d", clientIP, statusCode)
+		rl.log.Error(
+			"Lua result recognized failed",
+			"client_ip", clientIP,
+			"status_code", statusCode,
+		)
 
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"status": "error",
