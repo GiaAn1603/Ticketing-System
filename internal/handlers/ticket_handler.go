@@ -58,7 +58,7 @@ func (h *TicketHandler) InitTicket(c *gin.Context) {
 			observability.KeyError, err.Error(),
 		)
 
-		if strings.Contains(err.Error(), "already exists") {
+		if strings.Contains(err.Error(), "event already exists") {
 			c.JSON(http.StatusConflict, gin.H{
 				"status": "fail",
 				"error":  "Event already exists",

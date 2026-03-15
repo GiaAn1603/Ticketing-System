@@ -29,7 +29,7 @@ func NewKafkaProducer(
 	logger := observability.GetLogger("KAFKA_PRODUCER")
 
 	if err := utils.EnsureTopicExists(brokers, topic, partitions, replFactor, kafkaTimeout, logger); err != nil {
-		return nil, fmt.Errorf("failed to set up kafka brokers %v for topic %s: %w", brokers, topic, err)
+		return nil, fmt.Errorf("setup kafka brokers: %w", err)
 	}
 
 	w := &kafka.Writer{
@@ -77,7 +77,7 @@ func NewKafkaProducer(
 func (p *KafkaProducer) PublishOrderEvent(ctx context.Context, event models.OrderEvent) error {
 	payload, err := json.Marshal(event)
 	if err != nil {
-		return fmt.Errorf("failed to marshal event %s: %w", event.RequestID, err)
+		return fmt.Errorf("marshal event: %w", err)
 	}
 
 	msg := kafka.Message{
@@ -87,7 +87,7 @@ func (p *KafkaProducer) PublishOrderEvent(ctx context.Context, event models.Orde
 	}
 
 	if err := p.writer.WriteMessages(ctx, msg); err != nil {
-		return fmt.Errorf("failed to write message to kafka for request %s: %w", event.RequestID, err)
+		return fmt.Errorf("write message: %w", err)
 	}
 
 	p.log.Debug(
@@ -104,7 +104,7 @@ func (p *KafkaProducer) PublishOrderEvent(ctx context.Context, event models.Orde
 
 func (p *KafkaProducer) Close() error {
 	if err := p.writer.Close(); err != nil {
-		return fmt.Errorf("failed to close kafka producer: %w", err)
+		return fmt.Errorf("close producer: %w", err)
 	}
 
 	return nil

@@ -18,13 +18,13 @@ func EnsureTopicExists(brokers []string, topic string, partitions, replicationFa
 
 	conn, err := dialer.Dial("tcp", brokers[0])
 	if err != nil {
-		return fmt.Errorf("failed to dial initial broker at %s: %w", brokers[0], err)
+		return fmt.Errorf("dial initial broker: %w", err)
 	}
 	defer conn.Close()
 
 	topicPartitions, err := conn.ReadPartitions()
 	if err != nil {
-		return fmt.Errorf("failed to read partitions from broker at %s: %w", brokers[0], err)
+		return fmt.Errorf("read partitions: %w", err)
 	}
 
 	for _, p := range topicPartitions {
@@ -40,13 +40,13 @@ func EnsureTopicExists(brokers []string, topic string, partitions, replicationFa
 
 	controller, err := conn.Controller()
 	if err != nil {
-		return fmt.Errorf("failed to get controller from broker at %s: %w", brokers[0], err)
+		return fmt.Errorf("get controller: %w", err)
 	}
 
 	controllerAddr := net.JoinHostPort(controller.Host, strconv.Itoa(controller.Port))
 	controllerConn, err := dialer.Dial("tcp", controllerAddr)
 	if err != nil {
-		return fmt.Errorf("failed to dial controller at %s: %w", controllerAddr, err)
+		return fmt.Errorf("dial controller: %w", err)
 	}
 	defer controllerConn.Close()
 
@@ -57,7 +57,7 @@ func EnsureTopicExists(brokers []string, topic string, partitions, replicationFa
 	}
 
 	if err := controllerConn.CreateTopics(topicConfig); err != nil {
-		return fmt.Errorf("failed to create topic %s via controller at %s: %w", topic, controllerAddr, err)
+		return fmt.Errorf("create topic: %w", err)
 	}
 
 	logger.Info(
