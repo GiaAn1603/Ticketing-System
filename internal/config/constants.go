@@ -16,10 +16,12 @@ const (
 )
 
 const (
-	DBMaxOpenConns    = 25
-	DBMaxIdleConns    = 10
-	DBConnMaxLifetime = 5 * time.Minute
-	DBTimeout         = 5 * time.Second
+	DBMaxOpenConns       = 25
+	DBMaxIdleConns       = 10
+	DBConnMaxLifetime    = 5 * time.Minute
+	DBTimeout            = 5 * time.Second
+	DBRetryBackoffBase   = 1 * time.Second
+	DBRetryBackoffJitter = 1000
 )
 
 const (
