@@ -26,10 +26,12 @@ type Config struct {
 	HistoryTTLSeconds int
 	RedisTimeout      time.Duration
 
-	DBMaxOpenConns    int
-	DBMaxIdleConns    int
-	DBConnMaxLifetime time.Duration
-	DBTimeout         time.Duration
+	DBMaxOpenConns       int
+	DBMaxIdleConns       int
+	DBConnMaxLifetime    time.Duration
+	DBTimeout            time.Duration
+	DBRetryBackoffBase   time.Duration
+	DBRetryBackoffJitter int
 
 	KafkaTopicOrders          string
 	KafkaGroupID              string
@@ -90,10 +92,12 @@ func LoadConfig() *Config {
 		HistoryTTLSeconds: HistoryTTLSeconds,
 		RedisTimeout:      RedisTimeout,
 
-		DBMaxOpenConns:    DBMaxOpenConns,
-		DBMaxIdleConns:    DBMaxIdleConns,
-		DBConnMaxLifetime: DBConnMaxLifetime,
-		DBTimeout:         DBTimeout,
+		DBMaxOpenConns:       DBMaxOpenConns,
+		DBMaxIdleConns:       DBMaxIdleConns,
+		DBConnMaxLifetime:    DBConnMaxLifetime,
+		DBTimeout:            DBTimeout,
+		DBRetryBackoffBase:   DBRetryBackoffBase,
+		DBRetryBackoffJitter: DBRetryBackoffJitter,
 
 		KafkaTopicOrders:          KafkaTopicOrders,
 		KafkaGroupID:              KafkaGroupID,
