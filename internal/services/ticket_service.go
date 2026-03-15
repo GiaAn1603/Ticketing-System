@@ -76,7 +76,8 @@ func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, re
 			infrastructure.KeyError, err.Error(),
 		)
 
-		rollbackCtx, rollbackCancel := context.WithTimeout(context.Background(), s.rollbackTimeout)
+		detachedCtx := context.WithoutCancel(ctx)
+		rollbackCtx, rollbackCancel := context.WithTimeout(detachedCtx, s.rollbackTimeout)
 		defer rollbackCancel()
 
 		if rbErr := s.redisRepo.RollbackPurchase(rollbackCtx, eventID, userID, reqID, quantity); rbErr != nil {
