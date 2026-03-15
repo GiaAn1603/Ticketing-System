@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"time"
 
 	"github.com/segmentio/kafka-go"
@@ -21,6 +22,8 @@ type KafkaConsumer struct {
 	pgRepo        *repositories.PostgresRepo
 	dbTimeout     time.Duration
 	commitTimeout time.Duration
+	backoffBase   time.Duration
+	backoffJitter int
 	log           *slog.Logger
 }
 
@@ -31,7 +34,8 @@ func NewKafkaConsumer(
 	partitions, replFactor int,
 	pgRepo *repositories.PostgresRepo,
 	minBytes, maxBytes int,
-	kafkaTimeout, dbTimeout, commitTimeout time.Duration,
+	kafkaTimeout, dbTimeout, commitTimeout, backoffBase time.Duration,
+	backoffJitter int,
 ) (*KafkaConsumer, error) {
 	logger := observability.GetLogger("KAFKA_CONSUMER")
 
@@ -78,6 +82,8 @@ func NewKafkaConsumer(
 		pgRepo:        pgRepo,
 		dbTimeout:     dbTimeout,
 		commitTimeout: commitTimeout,
+		backoffBase:   backoffBase,
+		backoffJitter: backoffJitter,
 		log:           logger,
 	}, nil
 }
@@ -129,6 +135,9 @@ func (c *KafkaConsumer) ConsumeOrderEvent(ctx context.Context) error {
 				"order_status", event.Status,
 				observability.KeyError, err.Error(),
 			)
+
+			jitter := time.Duration(rand.Intn(c.backoffJitter)) * time.Millisecond
+			time.Sleep(c.backoffBase + jitter)
 
 			continue
 		}
