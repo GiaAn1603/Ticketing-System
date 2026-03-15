@@ -35,7 +35,7 @@ func NewKafkaConsumer(
 	logger := infrastructure.GetLogger("KAFKA_CONSUMER")
 
 	if err := utils.EnsureTopicExists(brokers, topic, partitions, replFactor, kafkaTimeout, logger); err != nil {
-		return nil, fmt.Errorf("failed to set up kafka brokers %v for topic %s: %w", brokers, topic, err)
+		return nil, fmt.Errorf("setup kafka brokers: %w", err)
 	}
 
 	r := kafka.NewReader(kafka.ReaderConfig{
@@ -89,7 +89,7 @@ func (c *KafkaConsumer) ConsumeOrderEvent(ctx context.Context) error {
 				c.log.Info("Context cancelled")
 				return nil
 			}
-			return fmt.Errorf("failed to read message from kafka: %w", err)
+			return fmt.Errorf("read message: %w", err)
 		}
 
 		var event models.OrderEvent
@@ -150,7 +150,7 @@ func (c *KafkaConsumer) ConsumeOrderEvent(ctx context.Context) error {
 
 func (c *KafkaConsumer) Close() error {
 	if err := c.reader.Close(); err != nil {
-		return fmt.Errorf("failed to close kafka consumer: %w", err)
+		return fmt.Errorf("close consumer: %w", err)
 	}
 
 	return nil

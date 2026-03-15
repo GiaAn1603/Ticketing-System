@@ -12,7 +12,7 @@ func ConnectRedis(ctx context.Context, addr string) (*redis.Client, error) {
 
 	client := redis.NewClient(&redis.Options{Addr: addr})
 	if err := client.Ping(ctx).Err(); err != nil {
-		return nil, fmt.Errorf("redis ping failed at %s: %w", addr, err)
+		return nil, fmt.Errorf("ping redis: %w", err)
 	}
 
 	logger.Info(

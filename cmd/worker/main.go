@@ -34,7 +34,7 @@ func run() error {
 		cfg.DBConnMaxLifetime,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to connect postgres: %w", err)
+		return fmt.Errorf("connect postgres: %w", err)
 	}
 	defer func() {
 		logger.Info("Postgres connection closing")
@@ -67,7 +67,7 @@ func run() error {
 		cfg.KafkaCommitTimeout,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to init kafka consumer: %w", err)
+		return fmt.Errorf("init kafka consumer: %w", err)
 	}
 	defer func() {
 		logger.Info("Kafka connection closing")
@@ -111,7 +111,7 @@ func run() error {
 
 	select {
 	case err := <-workerErrChan:
-		return fmt.Errorf("worker stopped unexpectedly: %w", err)
+		return fmt.Errorf("run worker: %w", err)
 	case <-signalCtx.Done():
 		logger.Info(
 			"Shutdown signal received",
@@ -135,7 +135,7 @@ func run() error {
 	select {
 	case <-doneChan:
 	case <-shutdownCtx.Done():
-		return fmt.Errorf("worker forced to shutdown: %w", shutdownCtx.Err())
+		return fmt.Errorf("shutdown worker: %w", shutdownCtx.Err())
 	}
 
 	logger.Info("Worker exited")
