@@ -32,12 +32,12 @@ func (r *PostgresRepo) InsertOrderIfNotExists(ctx context.Context, order models.
 
 	result, err := r.db.ExecContext(ctx, query, order.EventID, order.UserID, order.RequestID, order.Quantity, order.Status, order.Timestamp)
 	if err != nil {
-		return fmt.Errorf("failed to insert order for request %s: %w", order.RequestID, err)
+		return fmt.Errorf("insert order: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to get rows affected for request %s: %w", order.RequestID, err)
+		return fmt.Errorf("get rows affected: %w", err)
 	}
 
 	if rowsAffected == 0 {
