@@ -26,7 +26,7 @@ func autoMigrate(ctx context.Context, db *sql.DB, logger *slog.Logger) error {
 	}
 
 	if _, err = db.ExecContext(ctx, string(schemaBytes)); err != nil {
-		return fmt.Errorf("failed to execute schema script: %w", err)
+		return fmt.Errorf("execute schema script: %w", err)
 	}
 
 	logger.Info("Database schema initialized successfully")
@@ -41,7 +41,7 @@ func ConnectPostgres(ctx context.Context, addr, user, password, dbName string, m
 
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open postgres connection: %w", err)
+		return nil, fmt.Errorf("open postgres connection: %w", err)
 	}
 
 	db.SetMaxOpenConns(maxOpen)
@@ -49,7 +49,7 @@ func ConnectPostgres(ctx context.Context, addr, user, password, dbName string, m
 	db.SetConnMaxLifetime(maxLifetime)
 
 	if err := db.PingContext(ctx); err != nil {
-		return nil, fmt.Errorf("postgres ping failed at %s: %w", addr, err)
+		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 
 	logger.Info(
@@ -59,7 +59,7 @@ func ConnectPostgres(ctx context.Context, addr, user, password, dbName string, m
 	)
 
 	if err := autoMigrate(ctx, db, logger); err != nil {
-		return nil, fmt.Errorf("failed to run auto migration: %w", err)
+		return nil, fmt.Errorf("run auto migration: %w", err)
 	}
 
 	return db, nil
