@@ -38,7 +38,7 @@ func (s *TicketService) InitializeEvent(ctx context.Context, eventID string, sto
 	)
 
 	if err := s.redisRepo.InitializeEvent(ctx, eventID, stock, maxLimit); err != nil {
-		return fmt.Errorf("failed to initialize event %s in redis: %w", eventID, err)
+		return fmt.Errorf("initialize event: %w", err)
 	}
 
 	return nil
@@ -54,7 +54,7 @@ func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, re
 	)
 
 	if err := s.redisRepo.PurchaseTicket(ctx, eventID, userID, reqID, quantity); err != nil {
-		return fmt.Errorf("failed to process purchase for request %s in redis: %w", reqID, err)
+		return fmt.Errorf("process purchase: %w", err)
 	}
 
 	event := models.OrderEvent{
@@ -94,7 +94,7 @@ func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, re
 			)
 		}
 
-		return fmt.Errorf("failed to publish event to kafka for request %s: %w", reqID, err)
+		return fmt.Errorf("publish event: %w", err)
 	}
 
 	return nil

@@ -36,12 +36,12 @@ func NewRedisRepo(ctx context.Context, rdb *redis.Client, ttl int) (*RedisRepo, 
 
 	buySHA, err := rdb.ScriptLoad(ctx, scripts.BuyTicketScript).Result()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load buy_ticket lua script: %w", err)
+		return nil, fmt.Errorf("load buy_ticket script: %w", err)
 	}
 
 	rollbackSHA, err := rdb.ScriptLoad(ctx, scripts.RollbackTicketScript).Result()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load rollback_ticket lua script: %w", err)
+		return nil, fmt.Errorf("load rollback script: %w", err)
 	}
 
 	logger.Info(
@@ -67,14 +67,14 @@ func (r *RedisRepo) InitializeEvent(ctx context.Context, eventID string, stock, 
 
 	created, err := r.rdb.SetNX(ctx, stockKey, stock, 0).Result()
 	if err != nil {
-		return fmt.Errorf("failed to set stock for event %s in redis: %w", eventID, err)
+		return fmt.Errorf("set stock: %w", err)
 	}
 	if !created {
-		return fmt.Errorf("event %s already exists in redis", eventID)
+		return fmt.Errorf("event already exists")
 	}
 
 	if err = r.rdb.Set(ctx, limitKey, maxLimit, 0).Err(); err != nil {
-		return fmt.Errorf("failed to set limit for event %s in redis: %w", eventID, err)
+		return fmt.Errorf("set limit: %w", err)
 	}
 
 	r.log.Debug(
@@ -99,7 +99,7 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 
 	result, err := utils.EvalShaWithFallback(ctx, r.rdb, r.buyScriptSHA, r.buyScriptBody, keys, args...).Int()
 	if err != nil {
-		return fmt.Errorf("failed to execute buy ticket script for event %s in redis: %w", eventID, err)
+		return fmt.Errorf("execute buy script: %w", err)
 	}
 
 	r.log.Debug(
@@ -125,7 +125,7 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 	case luaEventNotFound:
 		return models.ErrEventNotFound
 	default:
-		return fmt.Errorf("unexpected lua response code %d: %w", result, models.ErrInternal)
+		return fmt.Errorf("unexpected response code %d: %w", result, models.ErrInternal)
 	}
 }
 
@@ -140,7 +140,7 @@ func (r *RedisRepo) RollbackPurchase(ctx context.Context, eventID, userID, reqID
 
 	res, err := utils.EvalShaWithFallback(ctx, r.rdb, r.rollbackScriptSHA, r.rollbackScriptBody, keys, args...).Int()
 	if err != nil {
-		return fmt.Errorf("failed to execute rollback script for event %s: %w", eventID, err)
+		return fmt.Errorf("execute rollback script: %w", err)
 	}
 	if res == 0 {
 		r.log.Debug(
