@@ -35,7 +35,7 @@ func NewRateLimiter(ctx context.Context, rdb *redis.Client, capacity, rate int, 
 
 	sha, err := rdb.ScriptLoad(ctx, scripts.RateLimitScript).Result()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load rate_limit lua script: %w", err)
+		return nil, fmt.Errorf("load rate_limit script: %w", err)
 	}
 
 	logger.Info(

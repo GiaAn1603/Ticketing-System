@@ -31,7 +31,7 @@ func run() error {
 
 	rdb, err := infrastructure.ConnectRedis(startupCtx, cfg.RedisAddr)
 	if err != nil {
-		return fmt.Errorf("failed to connect redis: %w", err)
+		return fmt.Errorf("connect redis: %w", err)
 	}
 	defer func() {
 		logger.Info("Redis connection closing")
@@ -58,7 +58,7 @@ func run() error {
 		cfg.KafkaTimeout,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to init kafka producer: %w", err)
+		return fmt.Errorf("init kafka producer: %w", err)
 	}
 	defer func() {
 		logger.Info("Kafka connection closing")
@@ -75,12 +75,12 @@ func run() error {
 
 	rateLimiter, err := middlewares.NewRateLimiter(startupCtx, rdb, cfg.RateLimitCapacity, cfg.RateLimitRate, cfg.RateLimitTimeout)
 	if err != nil {
-		return fmt.Errorf("failed to init rate limiter: %w", err)
+		return fmt.Errorf("init rate limiter: %w", err)
 	}
 
 	redisRepo, err := repositories.NewRedisRepo(startupCtx, rdb, cfg.HistoryTTLSeconds)
 	if err != nil {
-		return fmt.Errorf("failed to init redis repo: %w", err)
+		return fmt.Errorf("init redis repo: %w", err)
 	}
 
 	ticketService := services.NewTicketService(redisRepo, kafkaProducer, cfg.RedisTimeout)
@@ -134,7 +134,7 @@ func run() error {
 
 	select {
 	case err := <-srvErrChan:
-		return fmt.Errorf("server stopped unexpectedly: %w", err)
+		return fmt.Errorf("run server: %w", err)
 	case <-signalCtx.Done():
 		logger.Info(
 			"Shutdown signal received",
@@ -148,7 +148,7 @@ func run() error {
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("server forced to shutdown: %w", err)
+		return fmt.Errorf("shutdown server: %w", err)
 	}
 
 	logger.Info("Server exited")

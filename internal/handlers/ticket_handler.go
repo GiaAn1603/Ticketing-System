@@ -56,15 +56,7 @@ func (h *TicketHandler) InitTicket(c *gin.Context) {
 			infrastructure.KeyError, err.Error(),
 		)
 
-		if strings.Contains(err.Error(), "failed to set stock in redis") {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status": "error",
-				"error":  "Failed to set event stock",
-			})
-			return
-		}
-
-		if strings.Contains(err.Error(), "already exists") {
+		if strings.Contains(err.Error(), "event already exists") {
 			c.JSON(http.StatusConflict, gin.H{
 				"status": "fail",
 				"error":  "Event already exists",
