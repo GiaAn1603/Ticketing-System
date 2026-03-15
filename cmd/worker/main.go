@@ -65,6 +65,8 @@ func run() error {
 		cfg.KafkaTimeout,
 		cfg.DBTimeout,
 		cfg.KafkaCommitTimeout,
+		cfg.DBRetryBackoffBase,
+		cfg.DBRetryBackoffJitter,
 	)
 	if err != nil {
 		return fmt.Errorf("init kafka consumer: %w", err)
