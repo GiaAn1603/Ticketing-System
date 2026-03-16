@@ -64,7 +64,7 @@ func getEnv(key, fallback string) string {
 }
 
 func LoadConfig() *Config {
-	if err := godotenv.Load(); err != nil {
+	if err := godotenv.Load(".env"); err != nil {
 		slog.Warn(
 			"Env file load failed",
 			"layer", "CONFIG",
