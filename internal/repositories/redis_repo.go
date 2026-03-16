@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/sony/gobreaker"
 
 	"Ticketing-System/internal/infrastructure/observability"
+	"Ticketing-System/internal/infrastructure/resiliency"
 	"Ticketing-System/internal/utils"
 	"Ticketing-System/pkg/apperrors"
 	"Ticketing-System/scripts"
@@ -24,6 +27,7 @@ const (
 
 type RedisRepo struct {
 	rdb                *redis.Client
+	cb                 *gobreaker.CircuitBreaker
 	buyScriptSHA       string
 	buyScriptBody      string
 	rollbackScriptSHA  string
@@ -32,7 +36,14 @@ type RedisRepo struct {
 	log                *slog.Logger
 }
 
-func NewRedisRepo(ctx context.Context, rdb *redis.Client, ttl int) (*RedisRepo, error) {
+func NewRedisRepo(
+	ctx context.Context,
+	rdb *redis.Client,
+	ttl int,
+	cbMaxReq, cbMinReq uint32,
+	cbFailRatio float64,
+	cbInterval, cbTimeout time.Duration,
+) (*RedisRepo, error) {
 	logger := observability.GetLogger("REDIS_REPO")
 
 	buySHA, err := rdb.ScriptLoad(ctx, scripts.BuyTicketScript).Result()
@@ -51,8 +62,11 @@ func NewRedisRepo(ctx context.Context, rdb *redis.Client, ttl int) (*RedisRepo, 
 		"rollback_sha", rollbackSHA,
 	)
 
+	cb := resiliency.NewCircuitBreaker(logger, "Redis_Repo_CB", cbMaxReq, cbMinReq, cbFailRatio, cbInterval, cbTimeout)
+
 	return &RedisRepo{
 		rdb:                rdb,
+		cb:                 cb,
 		buyScriptSHA:       buySHA,
 		buyScriptBody:      scripts.BuyTicketScript,
 		rollbackScriptSHA:  rollbackSHA,
@@ -98,10 +112,18 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 
 	args := []interface{}{quantity, r.historyTTL}
 
-	result, err := utils.EvalShaWithFallback(ctx, r.rdb, r.buyScriptSHA, r.buyScriptBody, keys, args...).Int()
+	rawResult, err := r.cb.Execute(func() (interface{}, error) {
+		return utils.EvalShaWithFallback(ctx, r.rdb, r.buyScriptSHA, r.buyScriptBody, keys, args...).Int()
+	})
 	if err != nil {
+		if err == gobreaker.ErrOpenState || err == gobreaker.ErrTooManyRequests {
+			return fmt.Errorf("pass circuit breaker: %w", apperrors.ErrInternal)
+		}
+
 		return fmt.Errorf("execute buy script: %w", err)
 	}
+
+	result := rawResult.(int)
 
 	r.log.Debug(
 		"Purchase Lua script executed",
@@ -139,11 +161,15 @@ func (r *RedisRepo) RollbackPurchase(ctx context.Context, eventID, userID, reqID
 
 	args := []interface{}{quantity}
 
-	res, err := utils.EvalShaWithFallback(ctx, r.rdb, r.rollbackScriptSHA, r.rollbackScriptBody, keys, args...).Int()
+	rawResult, err := r.cb.Execute(func() (interface{}, error) {
+		return utils.EvalShaWithFallback(ctx, r.rdb, r.rollbackScriptSHA, r.rollbackScriptBody, keys, args...).Int()
+	})
 	if err != nil {
 		return fmt.Errorf("execute rollback script: %w", err)
 	}
-	if res == 0 {
+
+	result := rawResult.(int)
+	if result == 0 {
 		r.log.Debug(
 			"Rollback skipped",
 			"event_id", eventID,
