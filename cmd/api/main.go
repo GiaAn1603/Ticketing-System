@@ -54,8 +54,8 @@ func run() error {
 		cfg.KafkaNumPartitions,
 		cfg.KafkaReplicationFactor,
 		cfg.KafkaProducerBatchSize,
-		cfg.KafkaProducerBatchTimeout,
 		cfg.KafkaTimeout,
+		cfg.KafkaProducerBatchTimeout,
 	)
 	if err != nil {
 		return fmt.Errorf("init kafka producer: %w", err)
