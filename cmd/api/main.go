@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/gin-gonic/gin"
+	ginprometheus "github.com/zsais/go-gin-prometheus"
 
 	"Ticketing-System/internal/config"
 	"Ticketing-System/internal/events"
@@ -112,6 +113,9 @@ func run() error {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.SetTrustedProxies(nil)
+
+	p := ginprometheus.NewPrometheus("gin")
+	p.Use(r)
 
 	r.GET("/ping", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
