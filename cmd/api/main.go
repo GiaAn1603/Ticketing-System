@@ -73,12 +73,32 @@ func run() error {
 		}
 	}()
 
-	rateLimiter, err := middlewares.NewRateLimiter(startupCtx, rdb, cfg.RateLimitCapacity, cfg.RateLimitRate, cfg.RateLimitTimeout)
+	rateLimiter, err := middlewares.NewRateLimiter(
+		startupCtx,
+		rdb,
+		cfg.RateLimitCapacity,
+		cfg.RateLimitRate,
+		cfg.CBMaxRequests,
+		cfg.CBMinRequests,
+		cfg.CBFailureRatio,
+		cfg.RateLimitTimeout,
+		cfg.CBInterval,
+		cfg.CBTimeout,
+	)
 	if err != nil {
 		return fmt.Errorf("init rate limiter: %w", err)
 	}
 
-	redisRepo, err := repositories.NewRedisRepo(startupCtx, rdb, cfg.HistoryTTLSeconds)
+	redisRepo, err := repositories.NewRedisRepo(
+		startupCtx,
+		rdb,
+		cfg.HistoryTTLSeconds,
+		cfg.CBMaxRequests,
+		cfg.CBMinRequests,
+		cfg.CBFailureRatio,
+		cfg.CBInterval,
+		cfg.CBTimeout,
+	)
 	if err != nil {
 		return fmt.Errorf("init redis repo: %w", err)
 	}

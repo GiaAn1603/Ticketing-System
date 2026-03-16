@@ -42,3 +42,11 @@ const (
 	RateLimitRate     = 5
 	RateLimitTimeout  = 500 * time.Millisecond
 )
+
+const (
+	CBMaxRequests  = 5
+	CBMinRequests  = 10
+	CBFailureRatio = 0.5
+	CBInterval     = 10 * time.Second
+	CBTimeout      = 15 * time.Second
+)
