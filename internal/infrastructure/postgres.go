@@ -34,7 +34,12 @@ func autoMigrate(ctx context.Context, db *sql.DB, logger *slog.Logger) error {
 	return nil
 }
 
-func ConnectPostgres(ctx context.Context, addr, user, password, dbName string, maxOpen, maxIdle int, maxLifetime time.Duration) (*sql.DB, error) {
+func ConnectPostgres(
+	ctx context.Context,
+	addr, user, password, dbName string,
+	maxOpen, maxIdle int,
+	maxLifetime time.Duration,
+) (*sql.DB, error) {
 	logger := GetLogger("INFRA_POSTGRES")
 
 	dsn := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", user, password, addr, dbName)
