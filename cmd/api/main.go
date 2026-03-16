@@ -18,6 +18,7 @@ import (
 	"syscall"
 
 	"github.com/gin-gonic/gin"
+	ginprometheus "github.com/zsais/go-gin-prometheus"
 )
 
 func run() error {
@@ -106,6 +107,9 @@ func run() error {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.SetTrustedProxies(nil)
+
+	p := ginprometheus.NewPrometheus("gin")
+	p.Use(r)
 
 	r.GET("/ping", func(c *gin.Context) {
 		c.JSON(200, gin.H{
