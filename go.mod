@@ -8,6 +8,7 @@ require (
 	github.com/lib/pq v1.11.2
 	github.com/redis/go-redis/v9 v9.17.3
 	github.com/segmentio/kafka-go v0.4.50
+	github.com/sony/gobreaker v1.0.0
 )
 
 require (
