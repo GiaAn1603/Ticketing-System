@@ -10,7 +10,13 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-func EnsureTopicExists(brokers []string, topic string, partitions, replicationFactor int, timeout time.Duration, logger *slog.Logger) error {
+func EnsureTopicExists(
+	logger *slog.Logger,
+	brokers []string,
+	topic string,
+	partitions, replicationFactor int,
+	timeout time.Duration,
+) error {
 	dialer := &kafka.Dialer{
 		Timeout:   timeout,
 		DualStack: true,
