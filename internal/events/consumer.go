@@ -28,11 +28,10 @@ type KafkaConsumer struct {
 
 func NewKafkaConsumer(
 	ctx context.Context,
+	pgRepo *repositories.PostgresRepo,
 	brokers []string,
 	topic, groupID string,
-	partitions, replFactor int,
-	pgRepo *repositories.PostgresRepo,
-	minBytes, maxBytes int,
+	partitions, replFactor, minBytes, maxBytes int,
 	kafkaTimeout, dbTimeout, commitTimeout, backoffBase time.Duration,
 	backoffJitter int,
 ) (*KafkaConsumer, error) {

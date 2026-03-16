@@ -54,12 +54,12 @@ func run() error {
 	kafkaBrokers := []string{cfg.KafkaAddr}
 	kafkaConsumer, err := events.NewKafkaConsumer(
 		startupCtx,
+		pgRepo,
 		kafkaBrokers,
 		cfg.KafkaTopicOrders,
 		cfg.KafkaGroupID,
 		cfg.KafkaNumPartitions,
 		cfg.KafkaReplicationFactor,
-		pgRepo,
 		cfg.KafkaConsumerMinBytes,
 		cfg.KafkaConsumerMaxBytes,
 		cfg.KafkaTimeout,
