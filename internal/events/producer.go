@@ -27,7 +27,7 @@ func NewKafkaProducer(
 ) (*KafkaProducer, error) {
 	logger := infrastructure.GetLogger("KAFKA_PRODUCER")
 
-	if err := utils.EnsureTopicExists(brokers, topic, partitions, replFactor, kafkaTimeout, logger); err != nil {
+	if err := utils.EnsureTopicExists(logger, brokers, topic, partitions, replFactor, kafkaTimeout); err != nil {
 		return nil, fmt.Errorf("setup kafka brokers: %w", err)
 	}
 

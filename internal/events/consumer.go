@@ -28,17 +28,16 @@ type KafkaConsumer struct {
 
 func NewKafkaConsumer(
 	ctx context.Context,
+	pgRepo *repositories.PostgresRepo,
 	brokers []string,
 	topic, groupID string,
-	partitions, replFactor int,
-	pgRepo *repositories.PostgresRepo,
-	minBytes, maxBytes int,
+	partitions, replFactor, minBytes, maxBytes int,
 	kafkaTimeout, dbTimeout, commitTimeout, backoffBase time.Duration,
 	backoffJitter int,
 ) (*KafkaConsumer, error) {
 	logger := infrastructure.GetLogger("KAFKA_CONSUMER")
 
-	if err := utils.EnsureTopicExists(brokers, topic, partitions, replFactor, kafkaTimeout, logger); err != nil {
+	if err := utils.EnsureTopicExists(logger, brokers, topic, partitions, replFactor, kafkaTimeout); err != nil {
 		return nil, fmt.Errorf("setup kafka brokers: %w", err)
 	}
 
