@@ -47,6 +47,10 @@ type Config struct {
 	RateLimitCapacity int
 	RateLimitRate     int
 	RateLimitTimeout  time.Duration
+
+	CBMaxRequests uint32
+	CBInterval    time.Duration
+	CBTimeout     time.Duration
 }
 
 func getEnv(key, fallback string) string {
@@ -113,6 +117,10 @@ func LoadConfig() *Config {
 		RateLimitCapacity: RateLimitCapacity,
 		RateLimitRate:     RateLimitRate,
 		RateLimitTimeout:  RateLimitTimeout,
+
+		CBMaxRequests: CBMaxRequests,
+		CBInterval:    CBInterval,
+		CBTimeout:     CBTimeout,
 	}
 
 	logger.Info(

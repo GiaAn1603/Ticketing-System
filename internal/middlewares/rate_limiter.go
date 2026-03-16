@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+	"github.com/sony/gobreaker"
 )
 
 const (
@@ -22,6 +23,7 @@ const (
 
 type RateLimiter struct {
 	rdb        *redis.Client
+	cb         *gobreaker.CircuitBreaker
 	capacity   int
 	rate       int
 	timeout    time.Duration
@@ -30,7 +32,13 @@ type RateLimiter struct {
 	log        *slog.Logger
 }
 
-func NewRateLimiter(ctx context.Context, rdb *redis.Client, capacity, rate int, timeout time.Duration) (*RateLimiter, error) {
+func NewRateLimiter(
+	ctx context.Context,
+	rdb *redis.Client,
+	capacity, rate int,
+	cbMaxReq uint32,
+	timeout, cbInterval, cbTimeout time.Duration,
+) (*RateLimiter, error) {
 	logger := infrastructure.GetLogger("MIDDLEWARE")
 
 	sha, err := rdb.ScriptLoad(ctx, scripts.RateLimitScript).Result()
@@ -43,8 +51,11 @@ func NewRateLimiter(ctx context.Context, rdb *redis.Client, capacity, rate int, 
 		"sha", sha,
 	)
 
+	cb := infrastructure.NewCircuitBreaker("RateLimit_CB", cbMaxReq, cbInterval, cbTimeout, logger)
+
 	return &RateLimiter{
 		rdb:        rdb,
+		cb:         cb,
 		capacity:   capacity,
 		rate:       rate,
 		timeout:    timeout,
@@ -62,7 +73,9 @@ func (rl *RateLimiter) Limit(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), rl.timeout)
 	defer cancel()
 
-	rawResult, err := utils.EvalShaWithFallback(ctx, rl.rdb, rl.scriptSHA, rl.scriptBody, keys, args...).Result()
+	rawResult, err := rl.cb.Execute(func() (interface{}, error) {
+		return utils.EvalShaWithFallback(ctx, rl.rdb, rl.scriptSHA, rl.scriptBody, keys, args...).Result()
+	})
 	if err != nil {
 		rl.log.Error(
 			"Lua script execution failed",
