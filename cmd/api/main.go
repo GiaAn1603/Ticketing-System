@@ -110,7 +110,17 @@ func run() error {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
-	r.SetTrustedProxies(nil)
+
+	err = r.SetTrustedProxies([]string{
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"127.0.0.0/8",
+		"::1",
+	})
+	if err != nil {
+		return fmt.Errorf("set trusted proxies: %w", err)
+	}
 
 	p := ginprometheus.NewPrometheus("gin")
 	p.Use(r)
