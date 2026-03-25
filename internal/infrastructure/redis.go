@@ -8,10 +8,14 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func ConnectRedis(ctx context.Context, addr string) (*redis.Client, error) {
+func ConnectRedis(ctx context.Context, addr string, poolSize, minIdle int) (*redis.Client, error) {
 	logger := GetLogger("REDIS_INFRA")
 
-	client := redis.NewClient(&redis.Options{Addr: addr})
+	client := redis.NewClient(&redis.Options{
+		Addr:         addr,
+		PoolSize:     poolSize,
+		MinIdleConns: minIdle,
+	})
 
 	if err := redisotel.InstrumentTracing(client); err != nil {
 		return nil, fmt.Errorf("instrument redis tracing: %w", err)
