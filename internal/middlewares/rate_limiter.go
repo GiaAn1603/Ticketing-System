@@ -148,6 +148,8 @@ func (rl *RateLimiter) Limit(c *gin.Context) {
 			"error":  "Internal server error",
 		})
 	case luaLimitExceeded:
+		infrastructure.RateLimitRejections.Inc()
+
 		rl.log.Warn(
 			"Rate limit exceeded",
 			infrastructure.KeyAction, "rate_limit",

@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/segmentio/kafka-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type KafkaConsumer struct {
@@ -111,6 +113,17 @@ func (c *KafkaConsumer) ConsumeOrderEvent(ctx context.Context) error {
 			continue
 		}
 
+		ctxWithTrace := otel.GetTextMapPropagator().Extract(context.Background(), &KafkaHeaderPropagator{Headers: &msg.Headers})
+
+		tr := otel.Tracer("ticket-consumer")
+		spanCtx, span := tr.Start(ctxWithTrace, "consume_kafka_msg")
+		span.SetAttributes(
+			attribute.String("event_id", event.EventID),
+			attribute.String("user_id", event.UserID),
+			attribute.String("request_id", event.RequestID),
+		)
+		defer span.End()
+
 		c.log.Info(
 			"OrderEvent consumed successfully",
 			"event_id", event.EventID,
@@ -121,7 +134,7 @@ func (c *KafkaConsumer) ConsumeOrderEvent(ctx context.Context) error {
 
 		event.Status = "Success"
 
-		dbCtx, dbCancel := context.WithTimeout(context.Background(), c.dbTimeout)
+		dbCtx, dbCancel := context.WithTimeout(spanCtx, c.dbTimeout)
 		err = c.pgRepo.InsertOrderIfNotExists(dbCtx, event)
 		dbCancel()
 
@@ -144,7 +157,7 @@ func (c *KafkaConsumer) ConsumeOrderEvent(ctx context.Context) error {
 			continue
 		}
 
-		commitCtx, commitCancel := context.WithTimeout(context.Background(), c.commitTimeout)
+		commitCtx, commitCancel := context.WithTimeout(spanCtx, c.commitTimeout)
 		if err := c.reader.CommitMessages(commitCtx, msg); err != nil {
 			c.log.Error(
 				"Message commit failed",

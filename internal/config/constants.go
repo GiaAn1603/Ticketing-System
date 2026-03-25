@@ -48,3 +48,11 @@ const (
 	CBInterval    = 10 * time.Second
 	CBTimeout     = 15 * time.Second
 )
+
+const (
+	OtelBatchMaxQueueSize  = 32768
+	OtelBatchMaxExportSize = 4096
+	OtelBatchTimeout       = 5 * time.Second
+	OtelExportTimeout      = 30 * time.Second
+	OtelTraceRatio         = 0.05
+)

@@ -9,13 +9,14 @@ import (
 )
 
 type Config struct {
-	ServerPort       string
-	RedisAddr        string
-	KafkaAddr        string
-	PostgresAddr     string
-	PostgresUser     string
-	PostgresPassword string
-	PostgresDB       string
+	ServerPort           string
+	RedisAddr            string
+	KafkaAddr            string
+	PostgresAddr         string
+	PostgresUser         string
+	PostgresPassword     string
+	PostgresDB           string
+	OtelExporterEndpoint string
 
 	ServerStartupTimeout  time.Duration
 	ServerReadTimeout     time.Duration
@@ -51,6 +52,12 @@ type Config struct {
 	CBMaxRequests uint32
 	CBInterval    time.Duration
 	CBTimeout     time.Duration
+
+	OtelBatchMaxQueueSize  int
+	OtelBatchMaxExportSize int
+	OtelBatchTimeout       time.Duration
+	OtelExportTimeout      time.Duration
+	OtelTraceRatio         float64
 }
 
 func getEnv(key, fallback string) string {
@@ -79,13 +86,14 @@ func LoadConfig() *Config {
 	}
 
 	cfg := &Config{
-		ServerPort:       getEnv("SERVER_PORT", ":8080"),
-		RedisAddr:        getEnv("REDIS_ADDR", "localhost:6379"),
-		KafkaAddr:        getEnv("KAFKA_ADDR", "localhost:9092"),
-		PostgresAddr:     getEnv("POSTGRES_ADDR", "localhost:5432"),
-		PostgresUser:     getEnv("POSTGRES_USER", "admin"),
-		PostgresPassword: getEnv("POSTGRES_PASSWORD", "SecretPassword123!"),
-		PostgresDB:       getEnv("POSTGRES_DB", "ticket_db"),
+		ServerPort:           getEnv("SERVER_PORT", ":8080"),
+		RedisAddr:            getEnv("REDIS_ADDR", "localhost:6379"),
+		KafkaAddr:            getEnv("KAFKA_ADDR", "localhost:9092"),
+		PostgresAddr:         getEnv("POSTGRES_ADDR", "localhost:5432"),
+		PostgresUser:         getEnv("POSTGRES_USER", "admin"),
+		PostgresPassword:     getEnv("POSTGRES_PASSWORD", "SecretPassword123!"),
+		PostgresDB:           getEnv("POSTGRES_DB", "ticket_db"),
+		OtelExporterEndpoint: getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
 
 		ServerStartupTimeout:  ServerStartupTimeout,
 		ServerReadTimeout:     ServerReadTimeout,
@@ -121,6 +129,12 @@ func LoadConfig() *Config {
 		CBMaxRequests: CBMaxRequests,
 		CBInterval:    CBInterval,
 		CBTimeout:     CBTimeout,
+
+		OtelBatchMaxQueueSize:  OtelBatchMaxQueueSize,
+		OtelBatchMaxExportSize: OtelBatchMaxExportSize,
+		OtelBatchTimeout:       OtelBatchTimeout,
+		OtelExportTimeout:      OtelExportTimeout,
+		OtelTraceRatio:         OtelTraceRatio,
 	}
 
 	logger.Info(
@@ -129,6 +143,7 @@ func LoadConfig() *Config {
 		"redis_addr", cfg.RedisAddr,
 		"kafka_addr", cfg.KafkaAddr,
 		"pg_addr", cfg.PostgresAddr,
+		"otel_endpoint", cfg.OtelExporterEndpoint,
 	)
 
 	return cfg
