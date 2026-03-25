@@ -173,6 +173,26 @@ services:
     networks:
       - ticket-network
 
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: ticket-jaeger
+    restart: always
+    user: "root"
+    ports:
+      - "${JAEGER_UI_PORT:?}:16686"
+      - "${JAEGER_OTLP_PORT:?}:4317"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - SPAN_STORAGE_TYPE=badger
+      - BADGER_EPHEMERAL=false
+      - BADGER_DIRECTORY_VALUE=/badger/data
+      - BADGER_DIRECTORY_KEY=/badger/key
+    volumes:
+      - jaeger-data:/badger
+      - jaeger-tmp:/tmp 
+    networks:
+      - ticket-network
+
 volumes:
   postgres-data:
     name: ticket-postgres-data
@@ -194,6 +214,10 @@ volumes:
     name: ticket-prometheus-data
   grafana-data:
     name: ticket-grafana-data
+  jaeger-data:
+    name: ticket-jaeger-data
+  jaeger-tmp:
+    name: ticket-jaeger-tmp
 
 networks:
   ticket-network:

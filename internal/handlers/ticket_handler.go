@@ -153,6 +153,8 @@ func (h *TicketHandler) BuyTicket(c *gin.Context) {
 				"error":  "Purchase limit exceeded",
 			})
 		case errors.Is(err, models.ErrOutOfStock):
+			infrastructure.TicketSales.WithLabelValues(req.EventID, "sold_out").Inc()
+
 			c.JSON(http.StatusConflict, gin.H{
 				"status": "fail",
 				"error":  "Sold out",
@@ -176,6 +178,8 @@ func (h *TicketHandler) BuyTicket(c *gin.Context) {
 
 		return
 	}
+
+	infrastructure.TicketSales.WithLabelValues(req.EventID, "success").Inc()
 
 	h.log.Info(
 		"Purchase completed successfully",
