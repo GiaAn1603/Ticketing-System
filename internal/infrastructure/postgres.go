@@ -9,7 +9,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/XSAM/otelsql"
 	_ "github.com/lib/pq"
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 )
 
 func autoMigrate(ctx context.Context, db *sql.DB, logger *slog.Logger) error {
@@ -44,7 +46,9 @@ func ConnectPostgres(
 
 	dsn := fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", user, password, addr, dbName)
 
-	db, err := sql.Open("postgres", dsn)
+	db, err := otelsql.Open("postgres", dsn, otelsql.WithAttributes(
+		semconv.DBSystemPostgreSQL,
+	))
 	if err != nil {
 		return nil, fmt.Errorf("open postgres connection: %w", err)
 	}
