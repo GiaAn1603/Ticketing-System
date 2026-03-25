@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 
@@ -16,6 +17,7 @@ import (
 
 type TicketHandler struct {
 	service *services.TicketService
+	reqPool sync.Pool
 	log     *slog.Logger
 }
 
@@ -24,6 +26,7 @@ func NewTicketHandler(service *services.TicketService) *TicketHandler {
 
 	return &TicketHandler{
 		service: service,
+		reqPool: sync.Pool{New: func() interface{} { return new(requests.BuyRequest) }},
 		log:     logger,
 	}
 }
@@ -88,9 +91,11 @@ func (h *TicketHandler) InitTicket(c *gin.Context) {
 }
 
 func (h *TicketHandler) BuyTicket(c *gin.Context) {
-	var req requests.BuyRequest
+	req := h.reqPool.Get().(*requests.BuyRequest)
+	*req = requests.BuyRequest{}
+	defer h.reqPool.Put(req)
 
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(req); err != nil {
 		h.log.Warn(
 			"BuyRequest payload validation failed",
 			observability.KeyAction, "buy_ticket",

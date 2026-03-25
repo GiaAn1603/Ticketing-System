@@ -10,10 +10,14 @@ import (
 	"Ticketing-System/internal/infrastructure/observability"
 )
 
-func ConnectRedis(ctx context.Context, addr string) (*redis.Client, error) {
+func ConnectRedis(ctx context.Context, addr string, poolSize, minIdle int) (*redis.Client, error) {
 	logger := observability.GetLogger("INFRA_REDIS")
 
-	client := redis.NewClient(&redis.Options{Addr: addr})
+	client := redis.NewClient(&redis.Options{
+		Addr:         addr,
+		PoolSize:     poolSize,
+		MinIdleConns: minIdle,
+	})
 
 	if err := redisotel.InstrumentTracing(client); err != nil {
 		return nil, fmt.Errorf("instrument redis tracing: %w", err)

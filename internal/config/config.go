@@ -24,6 +24,8 @@ type Config struct {
 	ServerIdleTimeout     time.Duration
 	ServerShutdownTimeout time.Duration
 
+	RedisPoolSize     int
+	RedisMinIdleConns int
 	HistoryTTLSeconds int
 	RedisTimeout      time.Duration
 
@@ -54,6 +56,11 @@ type Config struct {
 	CBFailureRatio float64
 	CBInterval     time.Duration
 	CBTimeout      time.Duration
+
+	CacheSoldOutMaxSize  int
+	CacheSoldOutTTL      time.Duration
+	CacheBannedIPMaxSize int
+	CacheBannedIPTTL     time.Duration
 
 	OtelBatchMaxQueueSize  int
 	OtelBatchMaxExportSize int
@@ -101,6 +108,8 @@ func LoadConfig() *Config {
 		ServerIdleTimeout:     ServerIdleTimeout,
 		ServerShutdownTimeout: ServerShutdownTimeout,
 
+		RedisPoolSize:     RedisPoolSize,
+		RedisMinIdleConns: RedisMinIdleConns,
 		HistoryTTLSeconds: HistoryTTLSeconds,
 		RedisTimeout:      RedisTimeout,
 
@@ -131,6 +140,11 @@ func LoadConfig() *Config {
 		CBFailureRatio: CBFailureRatio,
 		CBInterval:     CBInterval,
 		CBTimeout:      CBTimeout,
+
+		CacheSoldOutMaxSize:  CacheSoldOutMaxSize,
+		CacheSoldOutTTL:      CacheSoldOutTTL,
+		CacheBannedIPMaxSize: CacheBannedIPMaxSize,
+		CacheBannedIPTTL:     CacheBannedIPTTL,
 
 		OtelBatchMaxQueueSize:  OtelBatchMaxQueueSize,
 		OtelBatchMaxExportSize: OtelBatchMaxExportSize,
