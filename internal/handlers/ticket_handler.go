@@ -155,6 +155,8 @@ func (h *TicketHandler) BuyTicket(c *gin.Context) {
 				"error":  "Event not found",
 			})
 		case errors.Is(err, apperrors.ErrOutOfStock):
+			observability.TicketSales.WithLabelValues(req.EventID, "sold_out").Inc()
+
 			c.JSON(http.StatusConflict, gin.H{
 				"status": "fail",
 				"error":  "Sold out",
@@ -178,6 +180,8 @@ func (h *TicketHandler) BuyTicket(c *gin.Context) {
 
 		return
 	}
+
+	observability.TicketSales.WithLabelValues(req.EventID, "success").Inc()
 
 	h.log.Info(
 		"Purchase completed successfully",

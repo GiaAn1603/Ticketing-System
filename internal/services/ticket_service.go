@@ -6,6 +6,9 @@ import (
 	"log/slog"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+
 	"Ticketing-System/internal/events"
 	"Ticketing-System/internal/infrastructure/observability"
 	"Ticketing-System/internal/models"
@@ -46,6 +49,15 @@ func (s *TicketService) InitializeEvent(ctx context.Context, eventID string, sto
 }
 
 func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, reqID string, quantity int) error {
+	tr := otel.Tracer("ticket-service")
+	ctx, span := tr.Start(ctx, "process_purchase")
+	span.SetAttributes(
+		attribute.String("event_id", eventID),
+		attribute.String("user_id", userID),
+		attribute.String("request_id", reqID),
+	)
+	defer span.End()
+
 	s.log.Debug(
 		"Purchase processing",
 		"event_id", eventID,
