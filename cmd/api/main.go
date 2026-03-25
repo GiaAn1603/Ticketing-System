@@ -57,7 +57,12 @@ func run() error {
 		}
 	}()
 
-	rdb, err := infrastructure.ConnectRedis(startupCtx, cfg.RedisAddr)
+	rdb, err := infrastructure.ConnectRedis(
+		startupCtx,
+		cfg.RedisAddr,
+		cfg.RedisPoolSize,
+		cfg.RedisMinIdleConns,
+	)
 	if err != nil {
 		return fmt.Errorf("connect redis: %w", err)
 	}

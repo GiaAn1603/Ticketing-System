@@ -24,6 +24,8 @@ type Config struct {
 	ServerIdleTimeout     time.Duration
 	ServerShutdownTimeout time.Duration
 
+	RedisPoolSize     int
+	RedisMinIdleConns int
 	HistoryTTLSeconds int
 	RedisTimeout      time.Duration
 
@@ -101,6 +103,8 @@ func LoadConfig() *Config {
 		ServerIdleTimeout:     ServerIdleTimeout,
 		ServerShutdownTimeout: ServerShutdownTimeout,
 
+		RedisPoolSize:     RedisPoolSize,
+		RedisMinIdleConns: RedisMinIdleConns,
 		HistoryTTLSeconds: HistoryTTLSeconds,
 		RedisTimeout:      RedisTimeout,
 
