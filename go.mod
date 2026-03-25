@@ -5,6 +5,7 @@ go 1.25.3
 require (
 	github.com/XSAM/otelsql v0.41.0
 	github.com/gin-gonic/gin v1.12.0
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.11.2
 	github.com/prometheus/client_golang v1.22.0
