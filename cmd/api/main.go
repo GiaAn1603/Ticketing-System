@@ -58,7 +58,12 @@ func run() error {
 		}
 	}()
 
-	rdb, err := infrastructure.ConnectRedis(startupCtx, cfg.RedisAddr)
+	rdb, err := infrastructure.ConnectRedis(
+		startupCtx,
+		cfg.RedisAddr,
+		cfg.RedisPoolSize,
+		cfg.RedisMinIdleConns,
+	)
 	if err != nil {
 		return fmt.Errorf("connect redis: %w", err)
 	}
@@ -107,10 +112,12 @@ func run() error {
 		rdb,
 		cfg.RateLimitCapacity,
 		cfg.RateLimitRate,
+		cfg.CacheBannedIPMaxSize,
 		cfg.CBMaxRequests,
 		cfg.CBMinRequests,
 		cfg.CBFailureRatio,
 		cfg.RateLimitTimeout,
+		cfg.CacheBannedIPTTL,
 		cfg.CBInterval,
 		cfg.CBTimeout,
 	)
@@ -132,7 +139,13 @@ func run() error {
 		return fmt.Errorf("init redis repo: %w", err)
 	}
 
-	ticketService := services.NewTicketService(redisRepo, kafkaProducer, cfg.RedisTimeout)
+	ticketService := services.NewTicketService(
+		redisRepo,
+		kafkaProducer,
+		cfg.CacheSoldOutMaxSize,
+		cfg.CacheSoldOutTTL,
+		cfg.RedisTimeout,
+	)
 	ticketHandler := handlers.NewTicketHandler(ticketService)
 
 	gin.SetMode(gin.ReleaseMode)

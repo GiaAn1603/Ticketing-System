@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/redis/go-redis/v9"
 	"github.com/sony/gobreaker"
 
@@ -23,23 +24,24 @@ const (
 )
 
 type RateLimiter struct {
-	rdb        *redis.Client
-	cb         *gobreaker.CircuitBreaker
-	capacity   int
-	rate       int
-	timeout    time.Duration
-	scriptSHA  string
-	scriptBody string
-	log        *slog.Logger
+	rdb           *redis.Client
+	cb            *gobreaker.CircuitBreaker
+	bannedIPCache *expirable.LRU[string, struct{}]
+	capacity      int
+	rate          int
+	timeout       time.Duration
+	scriptSHA     string
+	scriptBody    string
+	log           *slog.Logger
 }
 
 func NewRateLimiter(
 	ctx context.Context,
 	rdb *redis.Client,
-	capacity, rate int,
+	capacity, rate, bannedMaxSize int,
 	cbMaxReq, cbMinReq uint32,
 	cbFailRatio float64,
-	timeout, cbInterval, cbTimeout time.Duration,
+	timeout, bannedTTL, cbInterval, cbTimeout time.Duration,
 ) (*RateLimiter, error) {
 	logger := infrastructure.GetLogger("MIDDLEWARE_RATE_LIMIT")
 
@@ -54,21 +56,40 @@ func NewRateLimiter(
 	)
 
 	cb := infrastructure.NewCircuitBreaker(logger, "RateLimit_CB", cbMaxReq, cbMinReq, cbFailRatio, cbInterval, cbTimeout)
+	cache := expirable.NewLRU[string, struct{}](bannedMaxSize, nil, bannedTTL)
 
 	return &RateLimiter{
-		rdb:        rdb,
-		cb:         cb,
-		capacity:   capacity,
-		rate:       rate,
-		timeout:    timeout,
-		scriptSHA:  sha,
-		scriptBody: scripts.RateLimitScript,
-		log:        logger,
+		rdb:           rdb,
+		cb:            cb,
+		bannedIPCache: cache,
+		capacity:      capacity,
+		rate:          rate,
+		timeout:       timeout,
+		scriptSHA:     sha,
+		scriptBody:    scripts.RateLimitScript,
+		log:           logger,
 	}, nil
 }
 
 func (rl *RateLimiter) Limit(c *gin.Context) {
 	clientIP := c.ClientIP()
+
+	if _, isBanned := rl.bannedIPCache.Get(clientIP); isBanned {
+		infrastructure.RateLimitRejections.Inc()
+
+		rl.log.Warn(
+			"Rate limit cache validation failed",
+			"client_ip", clientIP,
+		)
+
+		c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+			"status": "fail",
+			"error":  "Too many requests, please try again later",
+		})
+
+		return
+	}
+
 	keys := []string{fmt.Sprintf("ticket:rate_limit:bucket:%s", clientIP)}
 	args := []interface{}{rl.capacity, rl.rate, 1}
 
@@ -143,6 +164,7 @@ func (rl *RateLimiter) Limit(c *gin.Context) {
 		})
 	case luaLimitExceeded:
 		infrastructure.RateLimitRejections.Inc()
+		rl.bannedIPCache.Add(clientIP, struct{}{})
 
 		rl.log.Warn(
 			"Rate limit exceeded",
