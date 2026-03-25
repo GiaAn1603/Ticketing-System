@@ -19,6 +19,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	ginprometheus "github.com/zsais/go-gin-prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 func run() error {
@@ -29,6 +30,32 @@ func run() error {
 
 	startupCtx, startupCancel := context.WithTimeout(context.Background(), cfg.ServerStartupTimeout)
 	defer startupCancel()
+
+	tp, err := infrastructure.InitTracer(
+		startupCtx,
+		"ticket-api",
+		cfg.OtelExporterEndpoint,
+		cfg.OtelBatchMaxQueueSize,
+		cfg.OtelBatchMaxExportSize,
+		cfg.OtelTraceRatio,
+		cfg.OtelBatchTimeout,
+		cfg.OtelExportTimeout,
+	)
+	if err != nil {
+		return fmt.Errorf("init tracer: %w", err)
+	}
+	defer func() {
+		logger.Info("Tracer connection closing")
+
+		if err := tp.Shutdown(context.Background()); err != nil {
+			logger.Warn(
+				"Tracer close failed",
+				infrastructure.KeyAction, "shutdown",
+				infrastructure.KeyStatus, infrastructure.StatusFailed,
+				infrastructure.KeyError, err.Error(),
+			)
+		}
+	}()
 
 	rdb, err := infrastructure.ConnectRedis(startupCtx, cfg.RedisAddr)
 	if err != nil {
@@ -132,8 +159,8 @@ func run() error {
 		})
 	})
 
-	r.POST("/init-ticket", rateLimiter.Limit, ticketHandler.InitTicket)
-	r.POST("/buy-ticket", rateLimiter.Limit, ticketHandler.BuyTicket)
+	r.POST("/init-ticket", rateLimiter.Limit, otelgin.Middleware("ticket-api"), ticketHandler.InitTicket)
+	r.POST("/buy-ticket", rateLimiter.Limit, otelgin.Middleware("ticket-api"), ticketHandler.BuyTicket)
 
 	srv := &http.Server{
 		Addr:         cfg.ServerPort,
