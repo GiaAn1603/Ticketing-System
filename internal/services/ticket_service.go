@@ -6,10 +6,12 @@ import (
 	"Ticketing-System/internal/models"
 	"Ticketing-System/internal/repositories"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/hashicorp/golang-lru/v2/expirable"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -17,16 +19,25 @@ import (
 type TicketService struct {
 	redisRepo       *repositories.RedisRepo
 	producer        *events.KafkaProducer
+	soldOutCache    *expirable.LRU[string, bool]
 	rollbackTimeout time.Duration
 	log             *slog.Logger
 }
 
-func NewTicketService(redisRepo *repositories.RedisRepo, producer *events.KafkaProducer, rollbackTimeout time.Duration) *TicketService {
+func NewTicketService(
+	redisRepo *repositories.RedisRepo,
+	producer *events.KafkaProducer,
+	soldOutMaxSize int,
+	soldOutTTL, rollbackTimeout time.Duration,
+) *TicketService {
 	logger := infrastructure.GetLogger("SERVICE")
+
+	cache := expirable.NewLRU[string, bool](soldOutMaxSize, nil, soldOutTTL)
 
 	return &TicketService{
 		redisRepo:       redisRepo,
 		producer:        producer,
+		soldOutCache:    cache,
 		rollbackTimeout: rollbackTimeout,
 		log:             logger,
 	}
@@ -57,6 +68,14 @@ func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, re
 	)
 	defer span.End()
 
+	if _, isSoldOut := s.soldOutCache.Get(eventID); isSoldOut {
+		s.log.Warn(
+			"Stock availability validation failed",
+			"event_id", eventID,
+		)
+		return models.ErrOutOfStock
+	}
+
 	s.log.Debug(
 		"Purchase processing",
 		"event_id", eventID,
@@ -66,6 +85,9 @@ func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, re
 	)
 
 	if err := s.redisRepo.PurchaseTicket(ctx, eventID, userID, reqID, quantity); err != nil {
+		if errors.Is(err, models.ErrOutOfStock) {
+			s.soldOutCache.Add(eventID, true)
+		}
 		return fmt.Errorf("process purchase: %w", err)
 	}
 
@@ -100,6 +122,16 @@ func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, re
 				"request_id", reqID,
 				"quantity", quantity,
 				infrastructure.KeyError, rbErr.Error(),
+			)
+		} else {
+			s.soldOutCache.Remove(eventID)
+
+			s.log.Info(
+				"Sold-out cache removed successfully",
+				"event_id", eventID,
+				"user_id", userID,
+				"request_id", reqID,
+				"quantity", quantity,
 			)
 		}
 
