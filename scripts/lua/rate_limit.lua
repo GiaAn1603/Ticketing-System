@@ -1,7 +1,7 @@
 local SUCCESS = 1
 
 local ERR_INVALID_INPUT = -1
-local ERR_LIMIT_EXCEEDED = -2
+local ERR_RATE_LIMIT_EXCEEDED = -5
 
 local rate_key = KEYS[1]
 
@@ -38,4 +38,4 @@ if tokens >= requested then
   return { SUCCESS, tokens }
 end
 
-return { ERR_LIMIT_EXCEEDED, tokens }
+return { ERR_RATE_LIMIT_EXCEEDED, tokens }

@@ -10,18 +10,18 @@ import (
 
 	"Ticketing-System/internal/config"
 	"Ticketing-System/internal/infrastructure"
-	"Ticketing-System/internal/models"
+	"Ticketing-System/internal/shared/apperrors"
 	"Ticketing-System/internal/utils"
 	"Ticketing-System/scripts"
 )
 
 const (
-	luaSuccess          = 1
-	luaAlreadyProcessed = 2
-	luaInvalidInput     = -1
-	luaLimitExceeded    = -2
-	luaOutOfStock       = -3
-	luaEventNotFound    = -4
+	luaSuccess               = 1
+	luaAlreadyProcessed      = 2
+	luaInvalidInput          = -1
+	luaPurchaseLimitExceeded = -2
+	luaOutOfStock            = -3
+	luaEventNotFound         = -4
 )
 
 type RedisRepo struct {
@@ -77,7 +77,7 @@ func (r *RedisRepo) InitializeEvent(ctx context.Context, eventID string, stock, 
 		return fmt.Errorf("set stock: %w", err)
 	}
 	if !created {
-		return fmt.Errorf("event already exists")
+		return apperrors.ErrAlreadyProcessed
 	}
 
 	if err = r.rdb.Set(ctx, limitKey, maxLimit, 0).Err(); err != nil {
@@ -109,7 +109,7 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 	})
 	if err != nil {
 		if err == gobreaker.ErrOpenState || err == gobreaker.ErrTooManyRequests {
-			return fmt.Errorf("pass circuit breaker: %w", models.ErrInternal)
+			return fmt.Errorf("pass circuit breaker: %w", apperrors.ErrInternal)
 		}
 
 		return fmt.Errorf("execute buy script: %w", err)
@@ -130,17 +130,17 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 	case luaSuccess:
 		return nil
 	case luaAlreadyProcessed:
-		return models.ErrAlreadyProcessed
+		return apperrors.ErrAlreadyProcessed
 	case luaInvalidInput:
-		return models.ErrInvalidInput
-	case luaLimitExceeded:
-		return models.ErrLimitExceeded
+		return apperrors.ErrInvalidInput
+	case luaPurchaseLimitExceeded:
+		return apperrors.ErrPurchaseLimitExceeded
 	case luaOutOfStock:
-		return models.ErrOutOfStock
+		return apperrors.ErrOutOfStock
 	case luaEventNotFound:
-		return models.ErrEventNotFound
+		return apperrors.ErrEventNotFound
 	default:
-		return fmt.Errorf("unexpected response code %d: %w", result, models.ErrInternal)
+		return fmt.Errorf("unexpected response code %d: %w", result, apperrors.ErrInternal)
 	}
 }
 

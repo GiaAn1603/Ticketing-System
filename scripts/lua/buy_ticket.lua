@@ -2,7 +2,7 @@ local SUCCESS = 1
 local ALREADY_PROCESSED = 2
 
 local ERR_INVALID_INPUT = -1
-local ERR_LIMIT_EXCEEDED = -2
+local ERR_PURCHASE_LIMIT_EXCEEDED = -2
 local ERR_OUT_OF_STOCK = -3
 local ERR_EVENT_NOT_FOUND = -4
 
@@ -37,7 +37,7 @@ local max_limit = tonumber(redis.call("GET", limit_key) or "1")
 local current_bought = tonumber(redis.call("GET", user_history_key) or "0")
 
 if current_bought + buy_quantity > max_limit then
-  return ERR_LIMIT_EXCEEDED
+  return ERR_PURCHASE_LIMIT_EXCEEDED
 end
 
 redis.call("DECRBY", stock_key, buy_quantity)

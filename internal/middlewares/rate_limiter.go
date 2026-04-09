@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hashicorp/golang-lru/v2/expirable"
@@ -13,14 +12,16 @@ import (
 
 	"Ticketing-System/internal/config"
 	"Ticketing-System/internal/infrastructure"
+	"Ticketing-System/internal/shared/apperrors"
+	"Ticketing-System/internal/shared/responses"
 	"Ticketing-System/internal/utils"
 	"Ticketing-System/scripts"
 )
 
 const (
-	luaSuccess       = 1
-	luaInvalidInput  = -1
-	luaLimitExceeded = -2
+	luaSuccess           = 1
+	luaInvalidInput      = -1
+	luaRateLimitExceeded = -5
 )
 
 type RateLimiter struct {
@@ -65,17 +66,7 @@ func (rl *RateLimiter) Limit(c *gin.Context) {
 
 	if _, isBanned := rl.bannedIPCache.Get(clientIP); isBanned {
 		infrastructure.RateLimitRejections.Inc()
-
-		rl.log.Warn(
-			"Rate limit cache validation failed",
-			"client_ip", clientIP,
-		)
-
-		c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-			"status": "fail",
-			"error":  "Too many requests, please try again later",
-		})
-
+		responses.Abort(c, apperrors.ErrRateLimitExceeded, "check_rate_limit_cache", rl.log)
 		return
 	}
 
@@ -89,32 +80,13 @@ func (rl *RateLimiter) Limit(c *gin.Context) {
 		return utils.EvalShaWithFallback(ctx, rl.rdb, rl.scriptSHA, rl.scriptBody, keys, args...).Result()
 	})
 	if err != nil {
-		rl.log.Error(
-			"Lua script execution failed",
-			"client_ip", clientIP,
-			infrastructure.KeyError, err.Error(),
-		)
-
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"status": "error",
-			"error":  "Internal server error",
-		})
-
+		responses.Abort(c, apperrors.ErrInternal, "execute_rate_limit_lua", rl.log)
 		return
 	}
 
 	results, isArray := rawResult.([]interface{})
 	if !isArray || len(results) < 2 {
-		rl.log.Error(
-			"Lua response format validation failed",
-			"client_ip", clientIP,
-		)
-
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"status": "error",
-			"error":  "Internal server error",
-		})
-
+		responses.Abort(c, apperrors.ErrInternal, "validate_rate_limit_format", rl.log)
 		return
 	}
 
@@ -122,16 +94,7 @@ func (rl *RateLimiter) Limit(c *gin.Context) {
 	remainingTokens, isValidTokens := results[1].(int64)
 
 	if !isValidStatus || !isValidTokens {
-		rl.log.Error(
-			"Lua response types validation failed",
-			"client_ip", clientIP,
-		)
-
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"status": "error",
-			"error":  "Internal server error",
-		})
-
+		responses.Abort(c, apperrors.ErrInternal, "validate_rate_limit_types", rl.log)
 		return
 	}
 
@@ -142,38 +105,12 @@ func (rl *RateLimiter) Limit(c *gin.Context) {
 	case luaSuccess:
 		c.Next()
 	case luaInvalidInput:
-		rl.log.Error(
-			"Lua parameters validation failed",
-			"client_ip", clientIP,
-		)
-
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"status": "error",
-			"error":  "Internal server error",
-		})
-	case luaLimitExceeded:
+		responses.Abort(c, apperrors.ErrInternal, "rate_limit_invalid_input", rl.log)
+	case luaRateLimitExceeded:
 		infrastructure.RateLimitRejections.Inc()
 		rl.bannedIPCache.Add(clientIP, struct{}{})
-
-		rl.log.Warn(
-			"Rate limit exceeded",
-			"client_ip", clientIP,
-		)
-
-		c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-			"status": "fail",
-			"error":  "Too many requests, please try again later",
-		})
+		responses.Abort(c, apperrors.ErrRateLimitExceeded, "rate_limit_exceeded", rl.log)
 	default:
-		rl.log.Error(
-			"Lua result recognized failed",
-			"client_ip", clientIP,
-			"status_code", statusCode,
-		)
-
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"status": "error",
-			"error":  "Internal server error",
-		})
+		responses.Abort(c, apperrors.ErrInternal, "rate_limit_unknown_result", rl.log)
 	}
 }
