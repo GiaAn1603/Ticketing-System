@@ -6,15 +6,17 @@ import (
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
+
+	"Ticketing-System/internal/config"
 )
 
-func ConnectRedis(ctx context.Context, addr string, poolSize, minIdle int) (*redis.Client, error) {
+func ConnectRedis(ctx context.Context, cfg config.RedisConfig) (*redis.Client, error) {
 	logger := GetLogger("INFRA_REDIS")
 
 	client := redis.NewClient(&redis.Options{
-		Addr:         addr,
-		PoolSize:     poolSize,
-		MinIdleConns: minIdle,
+		Addr:         cfg.Addr,
+		PoolSize:     cfg.PoolSize,
+		MinIdleConns: cfg.MinIdle,
 	})
 
 	if err := redisotel.InstrumentTracing(client); err != nil {
@@ -27,7 +29,7 @@ func ConnectRedis(ctx context.Context, addr string, poolSize, minIdle int) (*red
 
 	logger.Info(
 		"Redis connected successfully",
-		"addr", addr,
+		"addr", cfg.Addr,
 	)
 
 	return client, nil

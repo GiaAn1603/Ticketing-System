@@ -2,26 +2,21 @@ package infrastructure
 
 import (
 	"log/slog"
-	"time"
 
 	"github.com/sony/gobreaker"
+
+	"Ticketing-System/internal/config"
 )
 
-func NewCircuitBreaker(
-	logger *slog.Logger,
-	name string,
-	maxReq, minReq uint32,
-	failRatio float64,
-	interval, timeout time.Duration,
-) *gobreaker.CircuitBreaker {
+func NewCircuitBreaker(logger *slog.Logger, name string, cfg config.CircuitBreakerConfig) *gobreaker.CircuitBreaker {
 	st := gobreaker.Settings{
 		Name:        name,
-		MaxRequests: maxReq,
-		Interval:    interval,
-		Timeout:     timeout,
+		MaxRequests: cfg.MaxReq,
+		Interval:    cfg.Interval,
+		Timeout:     cfg.Timeout,
 		ReadyToTrip: func(counts gobreaker.Counts) bool {
 			failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
-			return counts.Requests >= minReq && failureRatio >= failRatio
+			return counts.Requests >= cfg.MinReq && failureRatio >= cfg.FailRatio
 		},
 		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
 			switch to {

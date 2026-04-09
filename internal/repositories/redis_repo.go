@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/sony/gobreaker"
 
+	"Ticketing-System/internal/config"
 	"Ticketing-System/internal/infrastructure"
 	"Ticketing-System/internal/models"
 	"Ticketing-System/internal/utils"
@@ -31,18 +31,11 @@ type RedisRepo struct {
 	buyScriptBody      string
 	rollbackScriptSHA  string
 	rollbackScriptBody string
-	historyTTL         int
+	cfg                config.RedisRepoConfig
 	log                *slog.Logger
 }
 
-func NewRedisRepo(
-	ctx context.Context,
-	rdb *redis.Client,
-	ttl int,
-	cbMaxReq, cbMinReq uint32,
-	cbFailRatio float64,
-	cbInterval, cbTimeout time.Duration,
-) (*RedisRepo, error) {
+func NewRedisRepo(ctx context.Context, rdb *redis.Client, cfg config.RedisRepoConfig) (*RedisRepo, error) {
 	logger := infrastructure.GetLogger("REDIS_REPO")
 
 	buySHA, err := rdb.ScriptLoad(ctx, scripts.BuyTicketScript).Result()
@@ -61,7 +54,7 @@ func NewRedisRepo(
 		"rollback_sha", rollbackSHA,
 	)
 
-	cb := infrastructure.NewCircuitBreaker(logger, "Redis_Repo_CB", cbMaxReq, cbMinReq, cbFailRatio, cbInterval, cbTimeout)
+	cb := infrastructure.NewCircuitBreaker(logger, "Redis_Repo_CB", cfg.CBConfig)
 
 	return &RedisRepo{
 		rdb:                rdb,
@@ -70,7 +63,7 @@ func NewRedisRepo(
 		buyScriptBody:      scripts.BuyTicketScript,
 		rollbackScriptSHA:  rollbackSHA,
 		rollbackScriptBody: scripts.RollbackTicketScript,
-		historyTTL:         ttl,
+		cfg:                cfg,
 		log:                logger,
 	}, nil
 }
@@ -109,7 +102,7 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 		fmt.Sprintf("ticket:req_processed:%s:%s:%s", eventID, userID, reqID),
 	}
 
-	args := []interface{}{quantity, r.historyTTL}
+	args := []interface{}{quantity, r.cfg.HistoryTTL}
 
 	rawResult, err := r.cb.Execute(func() (interface{}, error) {
 		return utils.EvalShaWithFallback(ctx, r.rdb, r.buyScriptSHA, r.buyScriptBody, keys, args...).Int()
