@@ -2,10 +2,8 @@ package services
 
 import (
 	"Ticketing-System/internal/config"
-	"Ticketing-System/internal/events"
 	"Ticketing-System/internal/infrastructure"
 	"Ticketing-System/internal/models"
-	"Ticketing-System/internal/repositories"
 	"context"
 	"errors"
 	"fmt"
@@ -17,16 +15,26 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
+type RedisRepository interface {
+	InitializeEvent(ctx context.Context, eventID string, stock, maxLimit int) error
+	PurchaseTicket(ctx context.Context, eventID, userID, reqID string, quantity int) error
+	RollbackPurchase(ctx context.Context, eventID, userID, reqID string, quantity int) error
+}
+
+type KafkaProducer interface {
+	PublishOrderEvent(ctx context.Context, event models.OrderEvent) error
+}
+
 type TicketService struct {
-	redisRepo    *repositories.RedisRepo
-	producer     *events.KafkaProducer
+	redisRepo    RedisRepository
+	producer     KafkaProducer
 	soldOutCache *expirable.LRU[string, bool]
 	cfg          config.TicketServiceConfig
 	log          *slog.Logger
 }
 
-func NewTicketService(redisRepo *repositories.RedisRepo, producer *events.KafkaProducer, cfg config.TicketServiceConfig) *TicketService {
-	logger := infrastructure.GetLogger("SERVICE")
+func NewTicketService(redisRepo RedisRepository, producer KafkaProducer, cfg config.TicketServiceConfig) *TicketService {
+	logger := infrastructure.GetLogger("TICKET_SERVICE")
 
 	cache := expirable.NewLRU[string, bool](cfg.SoldOutMaxSize, nil, cfg.SoldOutTTL)
 

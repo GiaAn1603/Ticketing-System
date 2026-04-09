@@ -286,3 +286,11 @@ func (c *Config) ToTicketServiceConfig() TicketServiceConfig {
 		RedisTimeout:    c.RedisTimeout,
 	}
 }
+
+func (c *Config) ToOrderServiceConfig() OrderServiceConfig {
+	return OrderServiceConfig{
+		DBTimeout:     c.DBTimeout,
+		BackoffBase:   c.DBRetryBackoffBase,
+		BackoffJitter: c.DBRetryBackoffJitter,
+	}
+}
