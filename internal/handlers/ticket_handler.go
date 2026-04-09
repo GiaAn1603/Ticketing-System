@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -12,16 +13,20 @@ import (
 	"Ticketing-System/internal/handlers/requests"
 	"Ticketing-System/internal/infrastructure"
 	"Ticketing-System/internal/models"
-	"Ticketing-System/internal/services"
 )
 
+type TicketService interface {
+	InitializeEvent(ctx context.Context, eventID string, stock, maxLimit int) error
+	ProcessPurchase(ctx context.Context, eventID, userID, reqID string, quantity int) error
+}
+
 type TicketHandler struct {
-	service *services.TicketService
+	service TicketService
 	reqPool sync.Pool
 	log     *slog.Logger
 }
 
-func NewTicketHandler(service *services.TicketService) *TicketHandler {
+func NewTicketHandler(service TicketService) *TicketHandler {
 	logger := infrastructure.GetLogger("HANDLER")
 
 	return &TicketHandler{

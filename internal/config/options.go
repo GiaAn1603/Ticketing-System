@@ -83,3 +83,9 @@ type TicketServiceConfig struct {
 	RollbackTimeout time.Duration
 	RedisTimeout    time.Duration
 }
+
+type OrderServiceConfig struct {
+	DBTimeout     time.Duration
+	BackoffBase   time.Duration
+	BackoffJitter int
+}

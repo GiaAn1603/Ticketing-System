@@ -13,6 +13,7 @@ import (
 	"Ticketing-System/internal/events"
 	"Ticketing-System/internal/infrastructure"
 	"Ticketing-System/internal/repositories"
+	"Ticketing-System/internal/services"
 )
 
 func run() error {
@@ -62,8 +63,9 @@ func run() error {
 	}()
 
 	pgRepo := repositories.NewPostgresRepo(pgDB)
+	orderService := services.NewOrderService(pgRepo, cfg.ToOrderServiceConfig())
 
-	kafkaConsumer, err := events.NewKafkaConsumer(startupCtx, pgRepo, cfg.ToConsumerConfig())
+	kafkaConsumer, err := events.NewKafkaConsumer(startupCtx, orderService, cfg.ToConsumerConfig())
 	if err != nil {
 		return fmt.Errorf("init kafka consumer: %w", err)
 	}

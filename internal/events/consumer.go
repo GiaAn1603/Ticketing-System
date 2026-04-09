@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/rand"
-	"time"
 
 	"github.com/segmentio/kafka-go"
 	"go.opentelemetry.io/otel"
@@ -16,18 +14,21 @@ import (
 	"Ticketing-System/internal/config"
 	"Ticketing-System/internal/infrastructure"
 	"Ticketing-System/internal/models"
-	"Ticketing-System/internal/repositories"
 	"Ticketing-System/internal/utils"
 )
 
-type KafkaConsumer struct {
-	reader *kafka.Reader
-	pgRepo *repositories.PostgresRepo
-	cfg    config.ConsumerConfig
-	log    *slog.Logger
+type OrderService interface {
+	ProcessOrder(ctx context.Context, event models.OrderEvent) error
 }
 
-func NewKafkaConsumer(ctx context.Context, pgRepo *repositories.PostgresRepo, cfg config.ConsumerConfig) (*KafkaConsumer, error) {
+type KafkaConsumer struct {
+	reader       *kafka.Reader
+	orderService OrderService
+	cfg          config.ConsumerConfig
+	log          *slog.Logger
+}
+
+func NewKafkaConsumer(ctx context.Context, orderService OrderService, cfg config.ConsumerConfig) (*KafkaConsumer, error) {
 	logger := infrastructure.GetLogger("KAFKA_CONSUMER")
 
 	if err := utils.EnsureTopicExists(logger, cfg.TopicConfig); err != nil {
@@ -69,10 +70,10 @@ func NewKafkaConsumer(ctx context.Context, pgRepo *repositories.PostgresRepo, cf
 	)
 
 	return &KafkaConsumer{
-		reader: r,
-		pgRepo: pgRepo,
-		cfg:    cfg,
-		log:    logger,
+		reader:       r,
+		orderService: orderService,
+		cfg:          cfg,
+		log:          logger,
 	}, nil
 }
 
@@ -99,7 +100,7 @@ func (c *KafkaConsumer) ConsumeOrderEvent(ctx context.Context) error {
 			continue
 		}
 
-		ctxWithTrace := otel.GetTextMapPropagator().Extract(context.Background(), &KafkaHeaderPropagator{Headers: &msg.Headers})
+		ctxWithTrace := otel.GetTextMapPropagator().Extract(ctx, &KafkaHeaderPropagator{Headers: &msg.Headers})
 
 		tr := otel.Tracer("ticket-consumer")
 		spanCtx, span := tr.Start(ctxWithTrace, "consume_kafka_msg")
@@ -117,29 +118,8 @@ func (c *KafkaConsumer) ConsumeOrderEvent(ctx context.Context) error {
 			"quantity", event.Quantity,
 		)
 
-		event.Status = "Success"
-
-		dbCtx, dbCancel := context.WithTimeout(spanCtx, c.cfg.DBTimeout)
-		err = c.pgRepo.CreateOrder(dbCtx, event)
-		dbCancel()
-
-		if err != nil {
-			c.log.Error(
-				"Order insertion failed",
-				"event_id", event.EventID,
-				"user_id", event.UserID,
-				"request_id", event.RequestID,
-				"quantity", event.Quantity,
-				"order_status", event.Status,
-				infrastructure.KeyError, err.Error(),
-			)
-
-			span.End()
-
-			jitter := time.Duration(rand.Intn(c.cfg.BackoffJitter)) * time.Millisecond
-			time.Sleep(c.cfg.BackoffBase + jitter)
-
-			continue
+		if err := c.orderService.ProcessOrder(spanCtx, event); err != nil {
+			return fmt.Errorf("process order: %w", err)
 		}
 
 		commitCtx, commitCancel := context.WithTimeout(spanCtx, c.cfg.CommitTimeout)
