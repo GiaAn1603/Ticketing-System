@@ -1,9 +1,9 @@
 package infrastructure
 
 import (
+	"Ticketing-System/internal/config"
 	"context"
 	"fmt"
-	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -13,13 +13,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 )
 
-func InitTracer(
-	ctx context.Context,
-	serviceName, endpoint string,
-	maxQueue, maxBatch int,
-	traceRatio float64,
-	batchTimeout, exportTimeout time.Duration,
-) (*sdktrace.TracerProvider, error) {
+func InitTracer(ctx context.Context, serviceName, endpoint string, cfg config.TracerConfig) (*sdktrace.TracerProvider, error) {
 	exporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithEndpoint(endpoint), otlptracegrpc.WithInsecure())
 	if err != nil {
 		return nil, fmt.Errorf("trace exporter: %w", err)
@@ -28,16 +22,16 @@ func InitTracer(
 	res, _ := resource.New(ctx, resource.WithAttributes(semconv.ServiceName(serviceName)))
 
 	bspOptions := []sdktrace.BatchSpanProcessorOption{
-		sdktrace.WithMaxQueueSize(maxQueue),
-		sdktrace.WithMaxExportBatchSize(maxBatch),
-		sdktrace.WithBatchTimeout(batchTimeout),
-		sdktrace.WithExportTimeout(exportTimeout),
+		sdktrace.WithMaxQueueSize(cfg.MaxQueue),
+		sdktrace.WithMaxExportBatchSize(cfg.MaxBatch),
+		sdktrace.WithBatchTimeout(cfg.BatchTimeout),
+		sdktrace.WithExportTimeout(cfg.ExportTimeout),
 	}
 
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter, bspOptions...),
 		sdktrace.WithResource(res),
-		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(traceRatio))),
+		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(cfg.TraceRatio))),
 	)
 
 	otel.SetTracerProvider(tp)
