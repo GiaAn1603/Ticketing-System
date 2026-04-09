@@ -26,21 +26,15 @@ func run() error {
 	infrastructure.InitLogger()
 	logger := infrastructure.GetLogger("MAIN")
 
-	cfg := config.LoadConfig()
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
 
 	startupCtx, startupCancel := context.WithTimeout(context.Background(), cfg.ServerStartupTimeout)
 	defer startupCancel()
 
-	tp, err := infrastructure.InitTracer(
-		startupCtx,
-		"ticket-api",
-		cfg.OtelExporterEndpoint,
-		cfg.OtelBatchMaxQueueSize,
-		cfg.OtelBatchMaxExportSize,
-		cfg.OtelTraceRatio,
-		cfg.OtelBatchTimeout,
-		cfg.OtelExportTimeout,
-	)
+	tp, err := infrastructure.InitTracer(startupCtx, "ticket-api", cfg.OtelExporterEndpoint, cfg.ToTracerConfig())
 	if err != nil {
 		return fmt.Errorf("init tracer: %w", err)
 	}
@@ -57,12 +51,7 @@ func run() error {
 		}
 	}()
 
-	rdb, err := infrastructure.ConnectRedis(
-		startupCtx,
-		cfg.RedisAddr,
-		cfg.RedisPoolSize,
-		cfg.RedisMinIdleConns,
-	)
+	rdb, err := infrastructure.ConnectRedis(startupCtx, cfg.ToRedisConfig())
 	if err != nil {
 		return fmt.Errorf("connect redis: %w", err)
 	}
@@ -79,17 +68,7 @@ func run() error {
 		}
 	}()
 
-	kafkaBrokers := []string{cfg.KafkaAddr}
-	kafkaProducer, err := events.NewKafkaProducer(
-		startupCtx,
-		kafkaBrokers,
-		cfg.KafkaTopicOrders,
-		cfg.KafkaNumPartitions,
-		cfg.KafkaReplicationFactor,
-		cfg.KafkaProducerBatchSize,
-		cfg.KafkaTimeout,
-		cfg.KafkaProducerBatchTimeout,
-	)
+	kafkaProducer, err := events.NewKafkaProducer(startupCtx, cfg.ToProducerConfig())
 	if err != nil {
 		return fmt.Errorf("init kafka producer: %w", err)
 	}
@@ -106,45 +85,17 @@ func run() error {
 		}
 	}()
 
-	rateLimiter, err := middlewares.NewRateLimiter(
-		startupCtx,
-		rdb,
-		cfg.RateLimitCapacity,
-		cfg.RateLimitRate,
-		cfg.CacheBannedIPMaxSize,
-		cfg.CBMaxRequests,
-		cfg.CBMinRequests,
-		cfg.CBFailureRatio,
-		cfg.RateLimitTimeout,
-		cfg.CacheBannedIPTTL,
-		cfg.CBInterval,
-		cfg.CBTimeout,
-	)
+	rateLimiter, err := middlewares.NewRateLimiter(startupCtx, rdb, cfg.ToRateLimiterConfig())
 	if err != nil {
 		return fmt.Errorf("init rate limiter: %w", err)
 	}
 
-	redisRepo, err := repositories.NewRedisRepo(
-		startupCtx,
-		rdb,
-		cfg.HistoryTTLSeconds,
-		cfg.CBMaxRequests,
-		cfg.CBMinRequests,
-		cfg.CBFailureRatio,
-		cfg.CBInterval,
-		cfg.CBTimeout,
-	)
+	redisRepo, err := repositories.NewRedisRepo(startupCtx, rdb, cfg.ToRedisRepoConfig())
 	if err != nil {
 		return fmt.Errorf("init redis repo: %w", err)
 	}
 
-	ticketService := services.NewTicketService(
-		redisRepo,
-		kafkaProducer,
-		cfg.CacheSoldOutMaxSize,
-		cfg.CacheSoldOutTTL,
-		cfg.RedisTimeout,
-	)
+	ticketService := services.NewTicketService(redisRepo, kafkaProducer, cfg.ToTicketServiceConfig())
 	ticketHandler := handlers.NewTicketHandler(ticketService)
 
 	gin.SetMode(gin.ReleaseMode)

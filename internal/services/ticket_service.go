@@ -1,6 +1,7 @@
 package services
 
 import (
+	"Ticketing-System/internal/config"
 	"Ticketing-System/internal/events"
 	"Ticketing-System/internal/infrastructure"
 	"Ticketing-System/internal/models"
@@ -17,28 +18,23 @@ import (
 )
 
 type TicketService struct {
-	redisRepo       *repositories.RedisRepo
-	producer        *events.KafkaProducer
-	soldOutCache    *expirable.LRU[string, bool]
-	rollbackTimeout time.Duration
-	log             *slog.Logger
+	redisRepo    *repositories.RedisRepo
+	producer     *events.KafkaProducer
+	soldOutCache *expirable.LRU[string, bool]
+	cfg          config.TicketServiceConfig
+	log          *slog.Logger
 }
 
-func NewTicketService(
-	redisRepo *repositories.RedisRepo,
-	producer *events.KafkaProducer,
-	soldOutMaxSize int,
-	soldOutTTL, rollbackTimeout time.Duration,
-) *TicketService {
+func NewTicketService(redisRepo *repositories.RedisRepo, producer *events.KafkaProducer, cfg config.TicketServiceConfig) *TicketService {
 	logger := infrastructure.GetLogger("SERVICE")
-	cache := expirable.NewLRU[string, bool](soldOutMaxSize, nil, soldOutTTL)
+	cache := expirable.NewLRU[string, bool](cfg.SoldOutMaxSize, nil, cfg.SoldOutTTL)
 
 	return &TicketService{
-		redisRepo:       redisRepo,
-		producer:        producer,
-		soldOutCache:    cache,
-		rollbackTimeout: rollbackTimeout,
-		log:             logger,
+		redisRepo:    redisRepo,
+		producer:     producer,
+		soldOutCache: cache,
+		cfg:          cfg,
+		log:          logger,
 	}
 }
 
@@ -110,7 +106,7 @@ func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, re
 		)
 
 		detachedCtx := context.WithoutCancel(ctx)
-		rollbackCtx, rollbackCancel := context.WithTimeout(detachedCtx, s.rollbackTimeout)
+		rollbackCtx, rollbackCancel := context.WithTimeout(detachedCtx, s.cfg.RollbackTimeout)
 		defer rollbackCancel()
 
 		if rbErr := s.redisRepo.RollbackPurchase(rollbackCtx, eventID, userID, reqID, quantity); rbErr != nil {

@@ -1,28 +1,22 @@
 package utils
 
 import (
+	"Ticketing-System/internal/config"
 	"fmt"
 	"log/slog"
 	"net"
 	"strconv"
-	"time"
 
 	"github.com/segmentio/kafka-go"
 )
 
-func EnsureTopicExists(
-	logger *slog.Logger,
-	brokers []string,
-	topic string,
-	partitions, replicationFactor int,
-	timeout time.Duration,
-) error {
+func EnsureTopicExists(logger *slog.Logger, cfg config.KafkaTopicConfig) error {
 	dialer := &kafka.Dialer{
-		Timeout:   timeout,
+		Timeout:   cfg.Timeout,
 		DualStack: true,
 	}
 
-	conn, err := dialer.Dial("tcp", brokers[0])
+	conn, err := dialer.Dial("tcp", cfg.Brokers[0])
 	if err != nil {
 		return fmt.Errorf("dial initial broker: %w", err)
 	}
@@ -34,10 +28,10 @@ func EnsureTopicExists(
 	}
 
 	for _, p := range topicPartitions {
-		if p.Topic == topic {
+		if p.Topic == cfg.Topic {
 			logger.Info(
 				"Topic already exists",
-				"topic", topic,
+				"topic", cfg.Topic,
 			)
 
 			return nil
@@ -57,9 +51,9 @@ func EnsureTopicExists(
 	defer controllerConn.Close()
 
 	topicConfig := kafka.TopicConfig{
-		Topic:             topic,
-		NumPartitions:     partitions,
-		ReplicationFactor: replicationFactor,
+		Topic:             cfg.Topic,
+		NumPartitions:     cfg.Partitions,
+		ReplicationFactor: cfg.ReplicationFactor,
 	}
 
 	if err := controllerConn.CreateTopics(topicConfig); err != nil {
@@ -68,7 +62,7 @@ func EnsureTopicExists(
 
 	logger.Info(
 		"Topic created successfully",
-		"topic", topic,
+		"topic", cfg.Topic,
 		"num_partitions", topicConfig.NumPartitions,
 	)
 

@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"Ticketing-System/internal/config"
 	"Ticketing-System/internal/infrastructure"
 	"Ticketing-System/internal/utils"
 	"Ticketing-System/scripts"
@@ -8,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hashicorp/golang-lru/v2/expirable"
@@ -26,22 +26,13 @@ type RateLimiter struct {
 	rdb           *redis.Client
 	cb            *gobreaker.CircuitBreaker
 	bannedIPCache *expirable.LRU[string, struct{}]
-	capacity      int
-	rate          int
-	timeout       time.Duration
 	scriptSHA     string
 	scriptBody    string
+	cfg           config.RateLimiterConfig
 	log           *slog.Logger
 }
 
-func NewRateLimiter(
-	ctx context.Context,
-	rdb *redis.Client,
-	capacity, rate, bannedMaxSize int,
-	cbMaxReq, cbMinReq uint32,
-	cbFailRatio float64,
-	timeout, bannedTTL, cbInterval, cbTimeout time.Duration,
-) (*RateLimiter, error) {
+func NewRateLimiter(ctx context.Context, rdb *redis.Client, cfg config.RateLimiterConfig) (*RateLimiter, error) {
 	logger := infrastructure.GetLogger("MIDDLEWARE_RATE_LIMIT")
 
 	sha, err := rdb.ScriptLoad(ctx, scripts.RateLimitScript).Result()
@@ -54,18 +45,16 @@ func NewRateLimiter(
 		"sha", sha,
 	)
 
-	cb := infrastructure.NewCircuitBreaker(logger, "RateLimit_CB", cbMaxReq, cbMinReq, cbFailRatio, cbInterval, cbTimeout)
-	cache := expirable.NewLRU[string, struct{}](bannedMaxSize, nil, bannedTTL)
+	cb := infrastructure.NewCircuitBreaker(logger, "RateLimit_CB", cfg.CBConfig)
+	cache := expirable.NewLRU[string, struct{}](cfg.BannedMaxSize, nil, cfg.BannedTTL)
 
 	return &RateLimiter{
 		rdb:           rdb,
 		cb:            cb,
 		bannedIPCache: cache,
-		capacity:      capacity,
-		rate:          rate,
-		timeout:       timeout,
 		scriptSHA:     sha,
 		scriptBody:    scripts.RateLimitScript,
+		cfg:           cfg,
 		log:           logger,
 	}, nil
 }
@@ -90,9 +79,9 @@ func (rl *RateLimiter) Limit(c *gin.Context) {
 	}
 
 	keys := []string{fmt.Sprintf("ticket:rate_limit:bucket:%s", clientIP)}
-	args := []interface{}{rl.capacity, rl.rate, 1}
+	args := []interface{}{rl.cfg.Capacity, rl.cfg.Rate, 1}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), rl.timeout)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), rl.cfg.Timeout)
 	defer cancel()
 
 	rawResult, err := rl.cb.Execute(func() (interface{}, error) {
@@ -145,7 +134,7 @@ func (rl *RateLimiter) Limit(c *gin.Context) {
 		return
 	}
 
-	c.Header("X-RateLimit-Limit", fmt.Sprintf("%d", rl.capacity))
+	c.Header("X-RateLimit-Limit", fmt.Sprintf("%d", rl.cfg.Capacity))
 	c.Header("X-RateLimit-Remaining", fmt.Sprintf("%d", remainingTokens))
 
 	switch statusCode {

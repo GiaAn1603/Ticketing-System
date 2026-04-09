@@ -18,21 +18,15 @@ func run() error {
 	infrastructure.InitLogger()
 	logger := infrastructure.GetLogger("WORKER")
 
-	cfg := config.LoadConfig()
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
 
 	startupCtx, startupCancel := context.WithTimeout(context.Background(), cfg.ServerStartupTimeout)
 	defer startupCancel()
 
-	tp, err := infrastructure.InitTracer(
-		startupCtx,
-		"ticket-worker",
-		cfg.OtelExporterEndpoint,
-		cfg.OtelBatchMaxQueueSize,
-		cfg.OtelBatchMaxExportSize,
-		cfg.OtelTraceRatio,
-		cfg.OtelBatchTimeout,
-		cfg.OtelExportTimeout,
-	)
+	tp, err := infrastructure.InitTracer(startupCtx, "ticket-worker", cfg.OtelExporterEndpoint, cfg.ToTracerConfig())
 	if err != nil {
 		return fmt.Errorf("init tracer: %w", err)
 	}
@@ -49,16 +43,7 @@ func run() error {
 		}
 	}()
 
-	pgDB, err := infrastructure.ConnectPostgres(
-		startupCtx,
-		cfg.PostgresAddr,
-		cfg.PostgresUser,
-		cfg.PostgresPassword,
-		cfg.PostgresDB,
-		cfg.DBMaxOpenConns,
-		cfg.DBMaxIdleConns,
-		cfg.DBConnMaxLifetime,
-	)
+	pgDB, err := infrastructure.ConnectPostgres(startupCtx, cfg.ToDBConfig())
 	if err != nil {
 		return fmt.Errorf("connect postgres: %w", err)
 	}
@@ -77,23 +62,7 @@ func run() error {
 
 	pgRepo := repositories.NewPostgresRepo(pgDB)
 
-	kafkaBrokers := []string{cfg.KafkaAddr}
-	kafkaConsumer, err := events.NewKafkaConsumer(
-		startupCtx,
-		pgRepo,
-		kafkaBrokers,
-		cfg.KafkaTopicOrders,
-		cfg.KafkaGroupID,
-		cfg.KafkaNumPartitions,
-		cfg.KafkaReplicationFactor,
-		cfg.KafkaConsumerMinBytes,
-		cfg.KafkaConsumerMaxBytes,
-		cfg.DBRetryBackoffJitter,
-		cfg.KafkaTimeout,
-		cfg.DBTimeout,
-		cfg.KafkaCommitTimeout,
-		cfg.DBRetryBackoffBase,
-	)
+	kafkaConsumer, err := events.NewKafkaConsumer(startupCtx, pgRepo, cfg.ToConsumerConfig())
 	if err != nil {
 		return fmt.Errorf("init kafka consumer: %w", err)
 	}
