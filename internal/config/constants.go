@@ -20,10 +20,10 @@ const (
 const (
 	DBMaxOpenConns       = 200
 	DBMaxIdleConns       = 50
+	DBRetryBackoffJitter = 1000
 	DBConnMaxLifetime    = 5 * time.Minute
 	DBTimeout            = 5 * time.Second
 	DBRetryBackoffBase   = 1 * time.Second
-	DBRetryBackoffJitter = 1000
 )
 
 const (
@@ -32,9 +32,9 @@ const (
 	KafkaNumPartitions        = 3
 	KafkaReplicationFactor    = 1
 	KafkaProducerBatchSize    = 10000
-	KafkaProducerBatchTimeout = 100 * time.Millisecond
 	KafkaConsumerMinBytes     = 10e3
 	KafkaConsumerMaxBytes     = 10e6
+	KafkaProducerBatchTimeout = 100 * time.Millisecond
 	KafkaTimeout              = 5 * time.Second
 	KafkaCommitTimeout        = 2 * time.Second
 )
@@ -55,15 +55,15 @@ const (
 
 const (
 	CacheSoldOutMaxSize  = 1000
-	CacheSoldOutTTL      = 1 * time.Minute
 	CacheBannedIPMaxSize = 10000
+	CacheSoldOutTTL      = 1 * time.Minute
 	CacheBannedIPTTL     = 2 * time.Second
 )
 
 const (
 	OtelBatchMaxQueueSize  = 32768
 	OtelBatchMaxExportSize = 4096
+	OtelTraceRatio         = 0.05
 	OtelBatchTimeout       = 5 * time.Second
 	OtelExportTimeout      = 30 * time.Second
-	OtelTraceRatio         = 0.05
 )

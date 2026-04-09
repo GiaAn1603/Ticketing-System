@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
+	"Ticketing-System/internal/config"
 	"Ticketing-System/internal/infrastructure/observability"
 	"Ticketing-System/internal/models"
 	"Ticketing-System/internal/utils"
@@ -49,37 +50,31 @@ func (k *KafkaHeaderPropagator) Keys() []string {
 	return keys
 }
 
-func NewKafkaProducer(
-	ctx context.Context,
-	brokers []string,
-	topic string,
-	partitions, replFactor, batchSize int,
-	kafkaTimeout, batchTimeout time.Duration,
-) (*KafkaProducer, error) {
+func NewKafkaProducer(ctx context.Context, cfg config.ProducerConfig) (*KafkaProducer, error) {
 	logger := observability.GetLogger("KAFKA_PRODUCER")
 
-	if err := utils.EnsureTopicExists(logger, brokers, topic, partitions, replFactor, kafkaTimeout); err != nil {
+	if err := utils.EnsureTopicExists(logger, cfg.TopicConfig); err != nil {
 		return nil, fmt.Errorf("setup kafka brokers: %w", err)
 	}
 
 	w := &kafka.Writer{
-		Addr:                   kafka.TCP(brokers...),
-		Topic:                  topic,
+		Addr:                   kafka.TCP(cfg.TopicConfig.Brokers...),
+		Topic:                  cfg.TopicConfig.Topic,
 		Balancer:               &kafka.Hash{},
 		AllowAutoTopicCreation: false,
-		BatchSize:              batchSize,
-		BatchTimeout:           batchTimeout,
+		BatchSize:              cfg.BatchSize,
+		BatchTimeout:           cfg.BatchTimeout,
 		RequiredAcks:           kafka.RequireAll,
-		WriteTimeout:           kafkaTimeout,
-		ReadTimeout:            kafkaTimeout,
+		WriteTimeout:           cfg.KafkaTimeout,
+		ReadTimeout:            cfg.KafkaTimeout,
 	}
 
 	logger.Info(
 		"Connection warming up",
-		"topic", topic,
+		"topic", cfg.TopicConfig.Topic,
 	)
 
-	if conn, err := kafka.DialLeader(ctx, "tcp", brokers[0], topic, 0); err != nil {
+	if conn, err := kafka.DialLeader(ctx, "tcp", cfg.TopicConfig.Brokers[0], cfg.TopicConfig.Topic, 0); err != nil {
 		logger.Warn(
 			"Warm-up connection failed",
 			observability.KeyError, err.Error(),
@@ -94,8 +89,8 @@ func NewKafkaProducer(
 
 	logger.Info(
 		"Producer initialized successfully",
-		"brokers", brokers,
-		"topic", topic,
+		"brokers", cfg.TopicConfig.Brokers,
+		"topic", cfg.TopicConfig.Topic,
 	)
 
 	return &KafkaProducer{

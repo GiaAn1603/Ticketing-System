@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
+	"Ticketing-System/internal/config"
 	"Ticketing-System/internal/infrastructure/observability"
 	"Ticketing-System/internal/models"
 	"Ticketing-System/internal/repositories"
@@ -20,44 +21,34 @@ import (
 )
 
 type KafkaConsumer struct {
-	reader        *kafka.Reader
-	pgRepo        *repositories.PostgresRepo
-	dbTimeout     time.Duration
-	commitTimeout time.Duration
-	backoffBase   time.Duration
-	backoffJitter int
-	log           *slog.Logger
+	reader *kafka.Reader
+	pgRepo *repositories.PostgresRepo
+	cfg    config.ConsumerConfig
+	log    *slog.Logger
 }
 
-func NewKafkaConsumer(
-	ctx context.Context,
-	pgRepo *repositories.PostgresRepo,
-	brokers []string,
-	topic, groupID string,
-	partitions, replFactor, minBytes, maxBytes, backoffJitter int,
-	kafkaTimeout, dbTimeout, commitTimeout, backoffBase time.Duration,
-) (*KafkaConsumer, error) {
+func NewKafkaConsumer(ctx context.Context, pgRepo *repositories.PostgresRepo, cfg config.ConsumerConfig) (*KafkaConsumer, error) {
 	logger := observability.GetLogger("KAFKA_CONSUMER")
 
-	if err := utils.EnsureTopicExists(logger, brokers, topic, partitions, replFactor, kafkaTimeout); err != nil {
+	if err := utils.EnsureTopicExists(logger, cfg.TopicConfig); err != nil {
 		return nil, fmt.Errorf("setup kafka brokers: %w", err)
 	}
 
 	r := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     brokers,
-		Topic:       topic,
-		GroupID:     groupID,
-		MinBytes:    minBytes,
-		MaxBytes:    maxBytes,
+		Brokers:     cfg.TopicConfig.Brokers,
+		Topic:       cfg.TopicConfig.Topic,
+		GroupID:     cfg.TopicConfig.GroupID,
+		MinBytes:    cfg.MinBytes,
+		MaxBytes:    cfg.MaxBytes,
 		StartOffset: kafka.FirstOffset,
 	})
 
 	logger.Info(
 		"Connection warming up",
-		"topic", topic,
+		"topic", cfg.TopicConfig.Topic,
 	)
 
-	if conn, err := kafka.DialLeader(ctx, "tcp", brokers[0], topic, 0); err != nil {
+	if conn, err := kafka.DialLeader(ctx, "tcp", cfg.TopicConfig.Brokers[0], cfg.TopicConfig.Topic, 0); err != nil {
 		logger.Warn(
 			"Warm-up connection failed",
 			observability.KeyError, err.Error(),
@@ -72,19 +63,16 @@ func NewKafkaConsumer(
 
 	logger.Info(
 		"Consumer initialized successfully",
-		"brokers", brokers,
-		"topic", topic,
-		"group_id", groupID,
+		"brokers", cfg.TopicConfig.Brokers,
+		"topic", cfg.TopicConfig.Topic,
+		"group_id", cfg.TopicConfig.GroupID,
 	)
 
 	return &KafkaConsumer{
-		reader:        r,
-		pgRepo:        pgRepo,
-		dbTimeout:     dbTimeout,
-		commitTimeout: commitTimeout,
-		backoffBase:   backoffBase,
-		backoffJitter: backoffJitter,
-		log:           logger,
+		reader: r,
+		pgRepo: pgRepo,
+		cfg:    cfg,
+		log:    logger,
 	}, nil
 }
 
@@ -131,7 +119,7 @@ func (c *KafkaConsumer) ConsumeOrderEvent(ctx context.Context) error {
 
 		event.Status = "Success"
 
-		dbCtx, dbCancel := context.WithTimeout(spanCtx, c.dbTimeout)
+		dbCtx, dbCancel := context.WithTimeout(spanCtx, c.cfg.DBTimeout)
 		err = c.pgRepo.CreateOrder(dbCtx, event)
 		dbCancel()
 
@@ -148,13 +136,13 @@ func (c *KafkaConsumer) ConsumeOrderEvent(ctx context.Context) error {
 
 			span.End()
 
-			jitter := time.Duration(rand.Intn(c.backoffJitter)) * time.Millisecond
-			time.Sleep(c.backoffBase + jitter)
+			jitter := time.Duration(rand.Intn(c.cfg.BackoffJitter)) * time.Millisecond
+			time.Sleep(c.cfg.BackoffBase + jitter)
 
 			continue
 		}
 
-		commitCtx, commitCancel := context.WithTimeout(spanCtx, c.commitTimeout)
+		commitCtx, commitCancel := context.WithTimeout(spanCtx, c.cfg.CommitTimeout)
 		if err := c.reader.CommitMessages(commitCtx, msg); err != nil {
 			c.log.Error(
 				"Message commit failed",
