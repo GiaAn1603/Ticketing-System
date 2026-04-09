@@ -3,7 +3,7 @@ package repositories
 import (
 	"Ticketing-System/internal/config"
 	"Ticketing-System/internal/infrastructure"
-	"Ticketing-System/internal/models"
+	"Ticketing-System/internal/pkg/apperrors"
 	"Ticketing-System/internal/utils"
 	"Ticketing-System/scripts"
 	"context"
@@ -76,7 +76,7 @@ func (r *RedisRepo) InitializeEvent(ctx context.Context, eventID string, stock, 
 		return fmt.Errorf("set stock: %w", err)
 	}
 	if !created {
-		return fmt.Errorf("event already exists")
+		return apperrors.AlreadyProcessed
 	}
 
 	if err = r.rdb.Set(ctx, limitKey, maxLimit, 0).Err(); err != nil {
@@ -108,7 +108,7 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 	})
 	if err != nil {
 		if err == gobreaker.ErrOpenState || err == gobreaker.ErrTooManyRequests {
-			return fmt.Errorf("pass circuit breaker: %w", models.ErrInternal)
+			return fmt.Errorf("pass circuit breaker: %w", apperrors.Internal)
 		}
 
 		return fmt.Errorf("execute buy script: %w", err)
@@ -129,17 +129,17 @@ func (r *RedisRepo) PurchaseTicket(ctx context.Context, eventID, userID, reqID s
 	case luaSuccess:
 		return nil
 	case luaAlreadyProcessed:
-		return models.ErrAlreadyProcessed
+		return apperrors.AlreadyProcessed
 	case luaInvalidInput:
-		return models.ErrInvalidInput
+		return apperrors.InvalidInput
 	case luaLimitExceeded:
-		return models.ErrLimitExceeded
+		return apperrors.LimitExceeded
 	case luaOutOfStock:
-		return models.ErrOutOfStock
+		return apperrors.OutOfStock
 	case luaEventNotFound:
-		return models.ErrEventNotFound
+		return apperrors.EventNotFound
 	default:
-		return fmt.Errorf("unexpected response code %d: %w", result, models.ErrInternal)
+		return fmt.Errorf("unexpected response code %d: %w", result, apperrors.Internal)
 	}
 }
 
