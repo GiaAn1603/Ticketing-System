@@ -25,6 +25,7 @@ import (
 func run() error {
 	infrastructure.InitLogger()
 	logger := infrastructure.GetLogger("MAIN")
+	closer := infrastructure.NewAppCloser(logger)
 
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -38,52 +39,19 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("init tracer: %w", err)
 	}
-	defer func() {
-		logger.Info("Tracer connection closing")
-
-		if err := tp.Shutdown(context.Background()); err != nil {
-			logger.Warn(
-				"Tracer close failed",
-				infrastructure.KeyAction, "shutdown",
-				infrastructure.KeyStatus, infrastructure.StatusFailed,
-				infrastructure.KeyError, err.Error(),
-			)
-		}
-	}()
+	closer.Add(func() error { return tp.Shutdown(context.Background()) })
 
 	rdb, err := infrastructure.ConnectRedis(startupCtx, cfg.ToRedisConfig())
 	if err != nil {
 		return fmt.Errorf("connect redis: %w", err)
 	}
-	defer func() {
-		logger.Info("Redis connection closing")
-
-		if err := rdb.Close(); err != nil {
-			logger.Warn(
-				"Redis close failed",
-				infrastructure.KeyAction, "shutdown",
-				infrastructure.KeyStatus, infrastructure.StatusFailed,
-				infrastructure.KeyError, err.Error(),
-			)
-		}
-	}()
+	closer.Add(rdb.Close)
 
 	kafkaProducer, err := events.NewKafkaProducer(startupCtx, cfg.ToProducerConfig())
 	if err != nil {
 		return fmt.Errorf("init kafka producer: %w", err)
 	}
-	defer func() {
-		logger.Info("Kafka connection closing")
-
-		if err := kafkaProducer.Close(); err != nil {
-			logger.Warn(
-				"Kafka close failed",
-				infrastructure.KeyAction, "shutdown",
-				infrastructure.KeyStatus, infrastructure.StatusFailed,
-				infrastructure.KeyError, err.Error(),
-			)
-		}
-	}()
+	closer.Add(kafkaProducer.Close)
 
 	rateLimiter, err := middlewares.NewRateLimiter(startupCtx, rdb, cfg.ToRateLimiterConfig())
 	if err != nil {
@@ -117,7 +85,7 @@ func run() error {
 	p.Use(r)
 
 	r.GET("/ping", func(c *gin.Context) {
-		c.JSON(200, gin.H{
+		c.JSON(http.StatusOK, gin.H{
 			"message": "pong",
 			"status":  "success",
 		})
@@ -175,6 +143,8 @@ func run() error {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("shutdown server: %w", err)
 	}
+
+	closer.CloseAll()
 
 	logger.Info("Server exited")
 

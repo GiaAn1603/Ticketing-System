@@ -4,6 +4,7 @@ import (
 	"Ticketing-System/internal/config"
 	"Ticketing-System/internal/infrastructure"
 	"Ticketing-System/internal/models"
+	"Ticketing-System/internal/pkg/apperrors"
 	"context"
 	"errors"
 	"fmt"
@@ -54,7 +55,10 @@ func (s *TicketService) InitializeEvent(ctx context.Context, eventID string, sto
 		"max_limit", maxLimit,
 	)
 
-	if err := s.redisRepo.InitializeEvent(ctx, eventID, stock, maxLimit); err != nil {
+	redisCtx, redisCancel := context.WithTimeout(ctx, s.cfg.RedisTimeout)
+	defer redisCancel()
+
+	if err := s.redisRepo.InitializeEvent(redisCtx, eventID, stock, maxLimit); err != nil {
 		return fmt.Errorf("initialize event: %w", err)
 	}
 
@@ -76,7 +80,7 @@ func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, re
 			"Stock availability validation failed",
 			"event_id", eventID,
 		)
-		return models.ErrOutOfStock
+		return apperrors.OutOfStock
 	}
 
 	s.log.Debug(
@@ -87,8 +91,11 @@ func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, re
 		"quantity", quantity,
 	)
 
-	if err := s.redisRepo.PurchaseTicket(ctx, eventID, userID, reqID, quantity); err != nil {
-		if errors.Is(err, models.ErrOutOfStock) {
+	redisCtx, redisCancel := context.WithTimeout(ctx, s.cfg.RedisTimeout)
+	defer redisCancel()
+
+	if err := s.redisRepo.PurchaseTicket(redisCtx, eventID, userID, reqID, quantity); err != nil {
+		if errors.Is(err, apperrors.OutOfStock) {
 			s.soldOutCache.Add(eventID, true)
 		}
 		return fmt.Errorf("process purchase: %w", err)

@@ -1,4 +1,4 @@
-package models
+package requests
 
 type InitRequest struct {
 	EventID  string `json:"event_id" binding:"required"`

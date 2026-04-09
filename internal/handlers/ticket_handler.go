@@ -1,13 +1,12 @@
 package handlers
 
 import (
+	"Ticketing-System/internal/handlers/requests"
 	"Ticketing-System/internal/infrastructure"
-	"Ticketing-System/internal/models"
+	"Ticketing-System/internal/pkg/apperrors"
+	"Ticketing-System/internal/pkg/responses"
 	"context"
-	"errors"
 	"log/slog"
-	"net/http"
-	"strings"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -29,54 +28,21 @@ func NewTicketHandler(service TicketService) *TicketHandler {
 
 	return &TicketHandler{
 		service: service,
-		reqPool: sync.Pool{New: func() interface{} { return new(models.BuyRequest) }},
+		reqPool: sync.Pool{New: func() interface{} { return new(requests.BuyRequest) }},
 		log:     logger,
 	}
 }
 
 func (h *TicketHandler) InitTicket(c *gin.Context) {
-	var req models.InitRequest
+	var req requests.InitRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.log.Warn(
-			"InitRequest payload validation failed",
-			infrastructure.KeyAction, "init_ticket",
-			infrastructure.KeyStatus, infrastructure.StatusFailed,
-			infrastructure.KeyError, err.Error(),
-		)
-
-		c.JSON(http.StatusBadRequest, gin.H{
-			"status": "fail",
-			"error":  "Invalid request payload",
-		})
-
+		responses.RespondError(c, err, "init_ticket", "", h.log)
 		return
 	}
 
 	if err := h.service.InitializeEvent(c.Request.Context(), req.EventID, req.Stock, req.MaxLimit); err != nil {
-		h.log.Error(
-			"Event initialization failed",
-			infrastructure.KeyAction, "init_ticket",
-			infrastructure.KeyStatus, infrastructure.StatusFailed,
-			"event_id", req.EventID,
-			"stock", req.Stock,
-			"max_limit", req.MaxLimit,
-			infrastructure.KeyError, err.Error(),
-		)
-
-		if strings.Contains(err.Error(), "event already exists") {
-			c.JSON(http.StatusConflict, gin.H{
-				"status": "fail",
-				"error":  "Event already exists",
-			})
-			return
-		}
-
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"status": "error",
-			"error":  "Internal server error",
-		})
-
+		responses.RespondError(c, err, "init_ticket", "", h.log)
 		return
 	}
 
@@ -87,105 +53,30 @@ func (h *TicketHandler) InitTicket(c *gin.Context) {
 		"max_limit", req.MaxLimit,
 	)
 
-	c.JSON(http.StatusOK, gin.H{
+	responses.RespondSuccess(c, gin.H{
 		"status":   "success",
 		"event_id": req.EventID,
 	})
 }
 
 func (h *TicketHandler) BuyTicket(c *gin.Context) {
-	req := h.reqPool.Get().(*models.BuyRequest)
-	*req = models.BuyRequest{}
+	req := h.reqPool.Get().(*requests.BuyRequest)
+	*req = requests.BuyRequest{}
 	defer h.reqPool.Put(req)
 
 	if err := c.ShouldBindJSON(req); err != nil {
-		h.log.Warn(
-			"BuyRequest payload validation failed",
-			infrastructure.KeyAction, "buy_ticket",
-			infrastructure.KeyStatus, infrastructure.StatusFailed,
-			infrastructure.KeyError, err.Error(),
-		)
-
-		c.JSON(http.StatusBadRequest, gin.H{
-			"status": "fail",
-			"error":  "Invalid request payload",
-		})
-
+		responses.RespondError(c, err, "buy_ticket", "", h.log)
 		return
 	}
 
 	reqID := c.GetHeader("X-Request-ID")
 	if reqID == "" {
-		h.log.Warn(
-			"X-Request-ID header missing",
-			infrastructure.KeyAction, "buy_ticket",
-			infrastructure.KeyStatus, infrastructure.StatusFailed,
-			"event_id", req.EventID,
-			"user_id", req.UserID,
-			"quantity", req.Quantity,
-			infrastructure.KeyError, "missing_request_id_header",
-		)
-
-		c.JSON(http.StatusBadRequest, gin.H{
-			"status": "fail",
-			"error":  "Missing X-Request-ID header",
-		})
-
+		responses.RespondError(c, apperrors.MissingRequestID, "buy_ticket", "", h.log)
 		return
 	}
 
 	if err := h.service.ProcessPurchase(c.Request.Context(), req.EventID, req.UserID, reqID, req.Quantity); err != nil {
-		h.log.Warn(
-			"Purchase failed",
-			infrastructure.KeyAction, "buy_ticket",
-			infrastructure.KeyStatus, infrastructure.StatusFailed,
-			"event_id", req.EventID,
-			"user_id", req.UserID,
-			"request_id", reqID,
-			"quantity", req.Quantity,
-			infrastructure.KeyError, err.Error(),
-		)
-
-		switch {
-		case errors.Is(err, models.ErrAlreadyProcessed):
-			c.JSON(http.StatusOK, gin.H{
-				"status":  "success",
-				"message": "Request already processed",
-			})
-		case errors.Is(err, models.ErrInvalidInput):
-			c.JSON(http.StatusBadRequest, gin.H{
-				"status": "fail",
-				"error":  "Invalid input parameters",
-			})
-		case errors.Is(err, models.ErrLimitExceeded):
-			c.JSON(http.StatusConflict, gin.H{
-				"status": "fail",
-				"error":  "Purchase limit exceeded",
-			})
-		case errors.Is(err, models.ErrOutOfStock):
-			infrastructure.TicketSales.WithLabelValues(req.EventID, "sold_out").Inc()
-
-			c.JSON(http.StatusConflict, gin.H{
-				"status": "fail",
-				"error":  "Sold out",
-			})
-		case errors.Is(err, models.ErrEventNotFound):
-			c.JSON(http.StatusNotFound, gin.H{
-				"status": "fail",
-				"error":  "Event not found",
-			})
-		case errors.Is(err, models.ErrInternal):
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status": "error",
-				"error":  "Internal database error",
-			})
-		default:
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status": "error",
-				"error":  "Internal server error",
-			})
-		}
-
+		responses.RespondError(c, err, "buy_ticket", reqID, h.log)
 		return
 	}
 
@@ -199,7 +90,7 @@ func (h *TicketHandler) BuyTicket(c *gin.Context) {
 		"quantity", req.Quantity,
 	)
 
-	c.JSON(http.StatusOK, gin.H{
+	responses.RespondSuccess(c, gin.H{
 		"status":  "success",
 		"message": "Ticket purchased successfully",
 	})
