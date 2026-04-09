@@ -12,6 +12,7 @@ import (
 	"Ticketing-System/internal/config"
 	"Ticketing-System/internal/events"
 	"Ticketing-System/internal/infrastructure/datastore"
+	"Ticketing-System/internal/infrastructure/lifecycle"
 	"Ticketing-System/internal/infrastructure/observability"
 	"Ticketing-System/internal/repositories"
 	"Ticketing-System/internal/services"
@@ -20,6 +21,7 @@ import (
 func run() error {
 	observability.InitLogger()
 	logger := observability.GetLogger("WORKER")
+	closer := lifecycle.NewAppCloser(logger)
 
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -33,35 +35,13 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("init tracer: %w", err)
 	}
-	defer func() {
-		logger.Info("Tracer connection closing")
-
-		if err := tp.Shutdown(context.Background()); err != nil {
-			logger.Warn(
-				"Tracer close failed",
-				observability.KeyAction, "shutdown",
-				observability.KeyStatus, observability.StatusFailed,
-				observability.KeyError, err.Error(),
-			)
-		}
-	}()
+	closer.Add(func() error { return tp.Shutdown(context.Background()) })
 
 	pgDB, err := datastore.ConnectPostgres(startupCtx, cfg.ToDBConfig())
 	if err != nil {
 		return fmt.Errorf("connect postgres: %w", err)
 	}
-	defer func() {
-		logger.Info("Postgres connection closing")
-
-		if err := pgDB.Close(); err != nil {
-			logger.Warn(
-				"Postgres close failed",
-				observability.KeyAction, "shutdown",
-				observability.KeyStatus, observability.StatusFailed,
-				observability.KeyError, err.Error(),
-			)
-		}
-	}()
+	closer.Add(pgDB.Close)
 
 	pgRepo := repositories.NewPostgresRepo(pgDB)
 	orderService := services.NewOrderService(pgRepo, cfg.ToOrderServiceConfig())
@@ -70,18 +50,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("init kafka consumer: %w", err)
 	}
-	defer func() {
-		logger.Info("Kafka connection closing")
-
-		if err := kafkaConsumer.Close(); err != nil {
-			logger.Warn(
-				"Kafka close failed",
-				observability.KeyAction, "shutdown",
-				observability.KeyStatus, observability.StatusFailed,
-				observability.KeyError, err.Error(),
-			)
-		}
-	}()
+	closer.Add(kafkaConsumer.Close)
 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
@@ -138,6 +107,8 @@ func run() error {
 	case <-shutdownCtx.Done():
 		return fmt.Errorf("shutdown worker: %w", shutdownCtx.Err())
 	}
+
+	closer.CloseAll()
 
 	logger.Info("Worker exited")
 

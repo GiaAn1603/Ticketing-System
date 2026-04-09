@@ -18,6 +18,7 @@ import (
 	"Ticketing-System/internal/events"
 	"Ticketing-System/internal/handlers"
 	"Ticketing-System/internal/infrastructure/datastore"
+	"Ticketing-System/internal/infrastructure/lifecycle"
 	"Ticketing-System/internal/infrastructure/observability"
 	"Ticketing-System/internal/middlewares"
 	"Ticketing-System/internal/repositories"
@@ -27,6 +28,7 @@ import (
 func run() error {
 	observability.InitLogger()
 	logger := observability.GetLogger("MAIN")
+	closer := lifecycle.NewAppCloser(logger)
 
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -40,52 +42,19 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("init tracer: %w", err)
 	}
-	defer func() {
-		logger.Info("Tracer connection closing")
-
-		if err := tp.Shutdown(context.Background()); err != nil {
-			logger.Warn(
-				"Tracer close failed",
-				observability.KeyAction, "shutdown",
-				observability.KeyStatus, observability.StatusFailed,
-				observability.KeyError, err.Error(),
-			)
-		}
-	}()
+	closer.Add(func() error { return tp.Shutdown(context.Background()) })
 
 	rdb, err := datastore.ConnectRedis(startupCtx, cfg.ToRedisConfig())
 	if err != nil {
 		return fmt.Errorf("connect redis: %w", err)
 	}
-	defer func() {
-		logger.Info("Redis connection closing")
-
-		if err := rdb.Close(); err != nil {
-			logger.Warn(
-				"Redis close failed",
-				observability.KeyAction, "shutdown",
-				observability.KeyStatus, observability.StatusFailed,
-				observability.KeyError, err.Error(),
-			)
-		}
-	}()
+	closer.Add(rdb.Close)
 
 	kafkaProducer, err := events.NewKafkaProducer(startupCtx, cfg.ToProducerConfig())
 	if err != nil {
 		return fmt.Errorf("init kafka producer: %w", err)
 	}
-	defer func() {
-		logger.Info("Kafka connection closing")
-
-		if err := kafkaProducer.Close(); err != nil {
-			logger.Warn(
-				"Kafka close failed",
-				observability.KeyAction, "shutdown",
-				observability.KeyStatus, observability.StatusFailed,
-				observability.KeyError, err.Error(),
-			)
-		}
-	}()
+	closer.Add(kafkaProducer.Close)
 
 	rateLimiter, err := middlewares.NewRateLimiter(startupCtx, rdb, cfg.ToRateLimiterConfig())
 	if err != nil {
@@ -177,6 +146,8 @@ func run() error {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("shutdown server: %w", err)
 	}
+
+	closer.CloseAll()
 
 	logger.Info("Server exited")
 

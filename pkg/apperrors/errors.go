@@ -9,5 +9,7 @@ var (
 	ErrOutOfStock            = errors.New("sold out")
 	ErrPurchaseLimitExceeded = errors.New("purchase limit exceeded")
 	ErrRateLimitExceeded     = errors.New("too many requests")
+	ErrEventAlreadyExists    = errors.New("event already exists")
+	ErrMissingRequestID      = errors.New("missing X-Request-ID header")
 	ErrInternal              = errors.New("internal server error")
 )

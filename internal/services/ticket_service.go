@@ -56,7 +56,10 @@ func (s *TicketService) InitializeEvent(ctx context.Context, eventID string, sto
 		"max_limit", maxLimit,
 	)
 
-	if err := s.redisRepo.InitializeEvent(ctx, eventID, stock, maxLimit); err != nil {
+	redisCtx, redisCancel := context.WithTimeout(ctx, s.cfg.RedisTimeout)
+	defer redisCancel()
+
+	if err := s.redisRepo.InitializeEvent(redisCtx, eventID, stock, maxLimit); err != nil {
 		return fmt.Errorf("initialize event: %w", err)
 	}
 
@@ -89,7 +92,10 @@ func (s *TicketService) ProcessPurchase(ctx context.Context, eventID, userID, re
 		"quantity", quantity,
 	)
 
-	if err := s.redisRepo.PurchaseTicket(ctx, eventID, userID, reqID, quantity); err != nil {
+	redisCtx, redisCancel := context.WithTimeout(ctx, s.cfg.RedisTimeout)
+	defer redisCancel()
+
+	if err := s.redisRepo.PurchaseTicket(redisCtx, eventID, userID, reqID, quantity); err != nil {
 		if errors.Is(err, apperrors.ErrOutOfStock) {
 			s.soldOutCache.Add(eventID, true)
 		}

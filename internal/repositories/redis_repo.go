@@ -78,7 +78,7 @@ func (r *RedisRepo) InitializeEvent(ctx context.Context, eventID string, stock, 
 		return fmt.Errorf("set stock: %w", err)
 	}
 	if !created {
-		return fmt.Errorf("event already exists")
+		return apperrors.ErrEventAlreadyExists
 	}
 
 	if err = r.rdb.Set(ctx, limitKey, maxLimit, 0).Err(); err != nil {
